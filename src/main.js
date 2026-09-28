@@ -416,8 +416,8 @@ function buildClassroom() {
     ghDoor.position.set(0, 1, 1.01); // Back door
     guardHouseGrp.add(ghDoor);
     
-    // Position the Guard House INSIDE the fence (z = -17) behind the dividing wall (x = 1.75)
-    guardHouseGrp.position.set(1.75, 0, -17);
+    // Position the Guard House INSIDE the fence, attached directly to the dividing wall
+    guardHouseGrp.position.set(1.75, 0, -17.8);
     scene.add(guardHouseGrp);
     obstacles.push(ghBody); // Solid obstacle
 
