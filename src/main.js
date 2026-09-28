@@ -395,8 +395,8 @@ function buildClassroom() {
     const ghRoof = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.2, 2.4), ghRoofMat);
     ghRoof.position.y = 2.6;
     guardHouseGrp.add(ghRoof);
-    // Windows (Glass)
-    const ghWinMat = new THREE.MeshStandardMaterial({color: 0x88ccff, transparent: true, opacity: 0.5, metalness: 0.8, roughness: 0.1});
+    // Windows (Glass - Matching Classroom Windows)
+    const ghWinMat = new THREE.MeshStandardMaterial({color: 0xa8d9b8, transparent: true, opacity: 0.6, metalness: 0.8, roughness: 0.1});
     const ghWin1 = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1, 0.1), ghWinMat); // Front window (facing street)
     ghWin1.position.set(0, 1.5, -1.01);
     guardHouseGrp.add(ghWin1);
