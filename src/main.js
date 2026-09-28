@@ -1198,10 +1198,8 @@ function setMode(mode) {
         orbitControls.enabled = true;
 
         // Re-enable editing tools
-        document.getElementById('left-sidebar').style.opacity = '1';
-        document.getElementById('left-sidebar').style.pointerEvents = 'auto';
-        document.getElementById('right-sidebar').style.opacity = '1';
-        document.getElementById('right-sidebar').style.pointerEvents = 'auto';
+        document.getElementById('left-sidebar').style.display = 'block';
+        document.getElementById('right-sidebar').style.display = 'block';
 
     } else if (mode === 'VIEW') {
         btnView.classList.add('active');
@@ -1215,10 +1213,8 @@ function setMode(mode) {
         deselect();
 
         // Disable UI
-        document.getElementById('left-sidebar').style.opacity = '0';
-        document.getElementById('left-sidebar').style.pointerEvents = 'none';
-        document.getElementById('right-sidebar').style.opacity = '0';
-        document.getElementById('right-sidebar').style.pointerEvents = 'none';
+        document.getElementById('left-sidebar').style.display = 'none';
+        document.getElementById('right-sidebar').style.display = 'none';
 
     } else if (mode === 'WALK') {
         btnWalk.classList.add('active');
@@ -1227,10 +1223,8 @@ function setMode(mode) {
         deselect();
 
         // Disable UI
-        document.getElementById('left-sidebar').style.opacity = '0';
-        document.getElementById('left-sidebar').style.pointerEvents = 'none';
-        document.getElementById('right-sidebar').style.opacity = '0';
-        document.getElementById('right-sidebar').style.pointerEvents = 'none';
+        document.getElementById('left-sidebar').style.display = 'none';
+        document.getElementById('right-sidebar').style.display = 'none';
 
         orbitControls.enabled = false;
         camera = walkCamera;
