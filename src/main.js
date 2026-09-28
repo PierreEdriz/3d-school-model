@@ -1138,6 +1138,7 @@ function updatePropertiesPanel() {
 function setupUI() {
     // Mode Buttons
     document.getElementById('btn-edit-mode').addEventListener('click', () => setMode('EDIT'));
+    document.getElementById('btn-view-mode').addEventListener('click', () => setMode('VIEW'));
     document.getElementById('btn-walk-mode').addEventListener('click', () => setMode('WALK'));
     const exitBtn = document.getElementById('btn-exit-walk');
     if (exitBtn) exitBtn.addEventListener('click', () => setMode('EDIT'));
@@ -1179,12 +1180,16 @@ function setupUI() {
 function setMode(mode) {
     currentMode = mode;
     const btnEdit = document.getElementById('btn-edit-mode');
+    const btnView = document.getElementById('btn-view-mode');
     const btnWalk = document.getElementById('btn-walk-mode');
     const walkHud = document.getElementById('walk-hud');
 
+    btnEdit.classList.remove('active');
+    btnView.classList.remove('active');
+    btnWalk.classList.remove('active');
+
     if (mode === 'EDIT') {
         btnEdit.classList.add('active');
-        btnWalk.classList.remove('active');
         walkHud.style.display = 'none';
 
         pointerLockControls.unlock();
@@ -1198,17 +1203,33 @@ function setMode(mode) {
         document.getElementById('right-sidebar').style.opacity = '1';
         document.getElementById('right-sidebar').style.pointerEvents = 'auto';
 
+    } else if (mode === 'VIEW') {
+        btnView.classList.add('active');
+        walkHud.style.display = 'none';
+
+        pointerLockControls.unlock();
+
+        camera = editCamera;
+        orbitControls.enabled = true;
+
+        deselect();
+
+        // Disable UI
+        document.getElementById('left-sidebar').style.opacity = '0';
+        document.getElementById('left-sidebar').style.pointerEvents = 'none';
+        document.getElementById('right-sidebar').style.opacity = '0';
+        document.getElementById('right-sidebar').style.pointerEvents = 'none';
+
     } else if (mode === 'WALK') {
         btnWalk.classList.add('active');
-        btnEdit.classList.remove('active');
         walkHud.style.display = 'block';
 
         deselect();
 
         // Disable UI
-        document.getElementById('left-sidebar').style.opacity = '0.5';
+        document.getElementById('left-sidebar').style.opacity = '0';
         document.getElementById('left-sidebar').style.pointerEvents = 'none';
-        document.getElementById('right-sidebar').style.opacity = '0.5';
+        document.getElementById('right-sidebar').style.opacity = '0';
         document.getElementById('right-sidebar').style.pointerEvents = 'none';
 
         orbitControls.enabled = false;
