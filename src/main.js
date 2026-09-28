@@ -338,47 +338,47 @@ function buildClassroom() {
         return group;
     }
 
-    // Big Gate Left - 2.25m wide, Hinge on the inner edge of left pillar (x=-3.75)
+    // Big Gate Left - 2.2m wide, Hinge on the front-inner edge of left pillar (x=-3.725, z=-19.25)
     const bigGateLeftGroup = new THREE.Group();
-    bigGateLeftGroup.position.set(-3.75, 0, -pathLength / 2); // Hinge at x=-3.75
+    bigGateLeftGroup.position.set(-3.725, 0, -pathLength / 2 - 0.25); // Hinge at front corner
     bigGateLeftGroup.userData = {
         isOpen: false,
         openType: 'rotate',
         openRot: 1.5, // 85 degrees outwards to the street
         closeRot: 0
     };
-    const bigGateLeftMesh = createSteelGate(2.25, 2.5, 'left');
-    bigGateLeftMesh.position.set(1.125, 0, 0); // Offset half width (1.125) to cover x=-3.75 to x=-1.5
+    const bigGateLeftMesh = createSteelGate(2.2, 2.5, 'left');
+    bigGateLeftMesh.position.set(1.1, 0, 0); // Offset half width
     bigGateLeftGroup.add(bigGateLeftMesh);
     scene.add(bigGateLeftGroup);
     doorMeshes.push(bigGateLeftGroup);
 
-    // Big Gate Right - 2.25m wide, Hinge on the inner edge of right pillar (x=0.75)
+    // Big Gate Right - 2.2m wide, Hinge on the front-inner edge of right pillar (x=0.725)
     const bigGateRightGroup = new THREE.Group();
-    bigGateRightGroup.position.set(0.75, 0, -pathLength / 2); // Hinge at x=0.75
+    bigGateRightGroup.position.set(0.725, 0, -pathLength / 2 - 0.25); // Hinge at front corner
     bigGateRightGroup.userData = {
         isOpen: false,
         openType: 'rotate',
         openRot: -1.5, // 85 degrees outwards to the street
         closeRot: 0
     };
-    const bigGateRightMesh = createSteelGate(2.25, 2.5, 'right');
-    bigGateRightMesh.position.set(-1.125, 0, 0); // Offset half width (-1.125) to cover x=0.75 to x=-1.5
+    const bigGateRightMesh = createSteelGate(2.2, 2.5, 'right');
+    bigGateRightMesh.position.set(-1.1, 0, 0); // Offset half width
     bigGateRightGroup.add(bigGateRightMesh);
     scene.add(bigGateRightGroup);
     doorMeshes.push(bigGateRightGroup);
 
-    // Small Gate (Pedestrians) - 1.5m wide, Hinge on the left face of the far right pillar (x=4.25)
+    // Small Gate (Pedestrians) - 1.45m wide, Hinge on the front-left face of the far right pillar (x=4.225)
     const smallGateGroup = new THREE.Group();
-    smallGateGroup.position.set(4.25, 0, -pathLength / 2); // Hinge at x=4.25
+    smallGateGroup.position.set(4.225, 0, -pathLength / 2 - 0.25); // Hinge at front corner
     smallGateGroup.userData = {
         isOpen: false,
         openType: 'rotate',
         openRot: -1.5, // 85 degrees outwards to the street
         closeRot: 0
     };
-    const smallGateMesh = createSteelGate(1.5, 2.5, 'center');
-    smallGateMesh.position.set(-0.75, 0, 0); // Offset half width (-0.75) to cover x=4.25 to x=2.75
+    const smallGateMesh = createSteelGate(1.45, 2.5, 'center');
+    smallGateMesh.position.set(-0.725, 0, 0); // Offset half width
     smallGateGroup.add(smallGateMesh);
     scene.add(smallGateGroup);
     doorMeshes.push(smallGateGroup);
