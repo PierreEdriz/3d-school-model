@@ -383,6 +383,66 @@ function buildClassroom() {
     scene.add(smallGateGroup);
     doorMeshes.push(smallGateGroup);
 
+    // ==========================================
+    // SECURITY FEATURES: Guard House & Metal Detector
+    // ==========================================
+    
+    // 1. Guard House (Security Outpost)
+    const guardHouseGrp = new THREE.Group();
+    // Body (Concrete)
+    const ghBody = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.5, 2.5), wallMat);
+    ghBody.position.y = 1.25;
+    guardHouseGrp.add(ghBody);
+    // Roof (Blue painted metal)
+    const ghRoofMat = new THREE.MeshStandardMaterial({color: 0x2c3e50, roughness: 0.8});
+    const ghRoof = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.2, 2.9), ghRoofMat);
+    ghRoof.position.y = 2.6;
+    guardHouseGrp.add(ghRoof);
+    // Windows (Glass)
+    const ghWinMat = new THREE.MeshStandardMaterial({color: 0x88ccff, transparent: true, opacity: 0.5, metalness: 0.8, roughness: 0.1});
+    const ghWin1 = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 0.1), ghWinMat); // Front window (facing street)
+    ghWin1.position.set(0, 1.5, -1.26);
+    guardHouseGrp.add(ghWin1);
+    const ghWin2 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1, 2), ghWinMat); // Left window (facing gate)
+    ghWin2.position.set(-1.26, 1.5, 0);
+    guardHouseGrp.add(ghWin2);
+    // Guard House Door (Steel)
+    const ghDoorMat = new THREE.MeshStandardMaterial({color: 0x7f8c8d});
+    const ghDoor = new THREE.Mesh(new THREE.BoxGeometry(0.8, 2, 0.1), ghDoorMat);
+    ghDoor.position.set(0, 1, 1.26); // Back door
+    guardHouseGrp.add(ghDoor);
+    
+    // Position the Guard House near the pedestrian gate (x=4.5 is hinge, so x=6 is next to it)
+    guardHouseGrp.position.set(6.5, 0, -18.5);
+    scene.add(guardHouseGrp);
+    obstacles.push(ghBody); // Solid obstacle
+
+    // 2. Walk-through Metal Detector
+    const mdGrp = new THREE.Group();
+    const mdMat = new THREE.MeshStandardMaterial({color: 0xbdc3c7, metalness: 0.7, roughness: 0.3});
+    // Left pillar
+    const mdLeft = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.2, 0.6), mdMat);
+    mdLeft.position.set(-0.5, 1.1, 0);
+    mdGrp.add(mdLeft);
+    // Right pillar
+    const mdRight = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.2, 0.6), mdMat);
+    mdRight.position.set(0.5, 1.1, 0);
+    mdGrp.add(mdRight);
+    // Top bar
+    const mdTop = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.2, 0.6), mdMat);
+    mdTop.position.set(0, 2.3, 0);
+    mdGrp.add(mdTop);
+    // LED Indicators (Red/Green)
+    const mdLightMat = new THREE.MeshStandardMaterial({color: 0x00ff00, emissive: 0x00ff00});
+    const mdLight = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.61), mdLightMat);
+    mdLight.position.set(-0.5, 2.0, 0);
+    mdGrp.add(mdLight);
+    
+    // Place metal detector just inside the small pedestrian gate (center x=3.5)
+    mdGrp.position.set(3.5, 0, -17.5);
+    scene.add(mdGrp);
+    // Note: No obstacle added so the player can actually walk THROUGH the detector!
+
     // Back Fence
     const fenceBack = new THREE.Mesh(new THREE.BoxGeometry(pathWidth, 2.5, 0.2), fenceMat);
     fenceBack.position.set(0, 1.25, pathLength / 2);
