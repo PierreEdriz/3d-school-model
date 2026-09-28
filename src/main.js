@@ -395,22 +395,64 @@ function buildClassroom() {
     const ghRoof = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.2, 2.4), ghRoofMat);
     ghRoof.position.y = 2.6;
     guardHouseGrp.add(ghRoof);
-    // Windows (Glass - Matching Classroom Windows)
-    const ghWinMat = new THREE.MeshStandardMaterial({color: 0xa8d9b8, transparent: true, opacity: 0.6, metalness: 0.8, roughness: 0.1});
-    const ghWin1 = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1, 0.1), ghWinMat); // Front window (facing street)
+    // Windows (Jalousie - Matching Classroom Windows)
+    const ghGlassMat = new THREE.MeshStandardMaterial({color: 0xa8d9b8, transparent: true, opacity: 0.6, metalness: 0.8, roughness: 0.1});
+    const ghFrameMat = new THREE.MeshStandardMaterial({ color: 0x4e8771 });
+
+    // Front Window (along X axis)
+    const ghWin1 = new THREE.Group();
+    const slatGeoX = new THREE.BoxGeometry(1.6, 0.12, 0.02);
+    for (let y = 0.05; y < 1.0; y += 0.1) {
+        const slat = new THREE.Mesh(slatGeoX, ghGlassMat);
+        slat.position.y = y - 0.5;
+        slat.rotation.x = -0.4;
+        ghWin1.add(slat);
+    }
+    const frameV1 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.0, 0.1), ghFrameMat);
+    frameV1.position.set(-0.8, 0, 0); ghWin1.add(frameV1);
+    const frameV2 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.0, 0.1), ghFrameMat);
+    frameV2.position.set(0.8, 0, 0); ghWin1.add(frameV2);
     ghWin1.position.set(0, 1.5, -1.01);
     guardHouseGrp.add(ghWin1);
-    const ghWin2 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1, 1.6), ghWinMat); // Right window (facing small gate)
+
+    // Side Windows (along Z axis)
+    const slatGeoZ = new THREE.BoxGeometry(0.02, 0.12, 1.6);
+    const createSideWin = () => {
+        const win = new THREE.Group();
+        for (let y = 0.05; y < 1.0; y += 0.1) {
+            const slat = new THREE.Mesh(slatGeoZ, ghGlassMat);
+            slat.position.y = y - 0.5;
+            slat.rotation.z = 0.4;
+            win.add(slat);
+        }
+        const f1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 0.05), ghFrameMat);
+        f1.position.set(0, 0, -0.8); win.add(f1);
+        const f2 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 0.05), ghFrameMat);
+        f2.position.set(0, 0, 0.8); win.add(f2);
+        return win;
+    };
+    
+    const ghWin2 = createSideWin();
     ghWin2.position.set(1.01, 1.5, 0);
     guardHouseGrp.add(ghWin2);
-    const ghWin3 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1, 1.6), ghWinMat); // Left window (facing big gate)
+    
+    const ghWin3 = createSideWin();
     ghWin3.position.set(-1.01, 1.5, 0);
     guardHouseGrp.add(ghWin3);
-    // Guard House Door (Steel)
-    const ghDoorMat = new THREE.MeshStandardMaterial({color: 0x7f8c8d});
-    const ghDoor = new THREE.Mesh(new THREE.BoxGeometry(0.8, 2, 0.1), ghDoorMat);
-    ghDoor.position.set(0, 1, 1.01); // Back door
-    guardHouseGrp.add(ghDoor);
+
+    // Guard House Door (Panel Door, Interactive)
+    const ghDoorGroup = new THREE.Group();
+    ghDoorGroup.position.set(0.4, 0, 1.01); // Hinge at right side of the door opening
+    ghDoorGroup.userData = { isOpen: false, openType: 'rotate', openRot: Math.PI / 2, closeRot: 0 };
+    
+    const ghDoorMat = new THREE.MeshStandardMaterial({color: 0x9dc359});
+    const ghDoorMesh = createPanelDoor(0.8, 2.0, 0.1, ghDoorMat, 'right');
+    ghDoorMesh.rotation.y = Math.PI / 2; // Rotate to span along X axis
+    ghDoorMesh.position.set(-0.4, 1.0, 0); // Offset from hinge
+    ghDoorGroup.add(ghDoorMesh);
+    
+    guardHouseGrp.add(ghDoorGroup);
+    doorMeshes.push(ghDoorGroup);
     
     // Position the Guard House so its front is flush with the fence (z=-19.25). 
     // Depth is 2.0, so center z = -18.25
