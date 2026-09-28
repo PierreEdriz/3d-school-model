@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Philippine Classroom Builder</title>
+    <script type="module" crossorigin src="/3d-school-model/assets/index-CUeCuJct.js"></script>
+    <link rel="stylesheet" crossorigin href="/3d-school-model/assets/index-ClcdWm-h.css">
+  </head>
+  <body>
+    <!-- UI Layer -->
+    <div id="ui-container">
+      
+      <!-- Top Toolbar -->
+      <div id="top-toolbar">
+        <div class="brand">Philippine Classroom Builder</div>
+        <div class="modes">
+          <button id="btn-edit-mode" class="active">EDIT MODE</button>
+          <button id="btn-walk-mode">ENTER WALK MODE</button>
+        </div>
+        <div class="actions">
+          <button id="btn-3d-view" class="active">3D VIEW</button>
+          <button id="btn-floor-plan">FLOOR PLAN</button>
+          <button id="btn-save">SAVE</button>
+          <button id="btn-load">LOAD</button>
+          <button id="btn-undo">UNDO</button>
+          <button id="btn-redo">REDO</button>
+        </div>
+      </div>
+
+      <div class="main-content">
+        <!-- Left Sidebar: Component Library -->
+        <div id="left-sidebar" class="sidebar">
+          <h3>COMPONENTS</h3>
+          <div class="library-categories">
+            <h4>Room Controls</h4>
+            <div style="padding: 10px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="chk-toggle-roof" checked style="width: 16px; height: 16px; cursor: pointer;">
+              <label for="chk-toggle-roof" style="cursor: pointer; user-select: none;">Show Roof & Ceiling</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3D Canvas Container -->
+        <div id="canvas-container"></div>
+
+        <!-- Right Sidebar: Properties -->
+        <div id="right-sidebar" class="sidebar">
+          <h3>PROPERTIES</h3>
+          <div id="no-selection">No object selected</div>
+          <div id="properties-panel" style="display: none;">
+            <div class="prop-group">
+              <label>Name: <span id="prop-name"></span></label>
+            </div>
+            <div class="prop-group">
+              <label>Position</label>
+              X: <input type="number" id="prop-pos-x" step="0.1">
+              Y: <input type="number" id="prop-pos-y" step="0.1">
+              Z: <input type="number" id="prop-pos-z" step="0.1">
+            </div>
+            <div class="prop-group">
+              <label>Rotation (deg)</label>
+              X: <input type="number" id="prop-rot-x" step="15">
+              Y: <input type="number" id="prop-rot-y" step="15">
+              Z: <input type="number" id="prop-rot-z" step="15">
+            </div>
+            <div class="prop-actions">
+              <button id="btn-delete">Delete (Del)</button>
+              <button id="btn-duplicate">Duplicate (Ctrl+D)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Walk Mode HUD -->
+    <div id="walk-hud" style="display: none;">
+      <div class="crosshair">+</div>
+      <div class="interaction-prompt" id="interaction-prompt"></div>
+      <div class="controls-hint">
+        WASD: Move | Mouse: Look | Shift: Fast | E: Interact | ESC: Mouse Cursor
+      </div>
+      <button id="btn-exit-walk" class="exit-btn">EXIT WALK MODE</button>
+    </div>
+
+  </body>
+</html>
