@@ -384,12 +384,34 @@ function buildClassroom() {
     
     // 1. Guard House (Security Outpost)
     const guardHouseGrp = new THREE.Group();
-    // Body (Concrete - Matching the Fence)
+    // Body Walls (Concrete - Matching the Fence, now hollow inside)
     const ghBodyMat = new THREE.MeshStandardMaterial({ color: 0xe5d3a5, roughness: 0.9 }); // Light Beige / Cream
     applyBrownBottomShader(ghBodyMat);
-    const ghBody = new THREE.Mesh(new THREE.BoxGeometry(2.0, 2.5, 2.0), ghBodyMat); // Body width 2.0 covers x=0.75 to 2.75
-    ghBody.position.y = 1.25;
-    guardHouseGrp.add(ghBody);
+    
+    const addGHWall = (w, h, d, x, y, z) => {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), ghBodyMat);
+        m.position.set(x, y, z);
+        guardHouseGrp.add(m);
+        obstacles.push(m);
+    };
+    
+    // Front Wall (with window hole)
+    addGHWall(2.0, 1.0, 0.1, 0, 0.5, -0.95);
+    addGHWall(2.0, 0.5, 0.1, 0, 2.25, -0.95);
+    // Left Wall (with window hole)
+    addGHWall(0.1, 1.0, 2.0, -0.95, 0.5, 0);
+    addGHWall(0.1, 0.5, 2.0, -0.95, 2.25, 0);
+    addGHWall(0.1, 1.0, 0.2, -0.95, 1.5, -0.9);
+    addGHWall(0.1, 1.0, 0.2, -0.95, 1.5, 0.9);
+    // Right Wall (with window hole)
+    addGHWall(0.1, 1.0, 2.0, 0.95, 0.5, 0);
+    addGHWall(0.1, 0.5, 2.0, 0.95, 2.25, 0);
+    addGHWall(0.1, 1.0, 0.2, 0.95, 1.5, -0.9);
+    addGHWall(0.1, 1.0, 0.2, 0.95, 1.5, 0.9);
+    // Back Wall (with door hole at x=0.0 to 0.8)
+    addGHWall(1.0, 2.5, 0.1, -0.5, 1.25, 0.95);
+    addGHWall(0.2, 2.5, 0.1, 0.9, 1.25, 0.95);
+    addGHWall(0.8, 0.5, 0.1, 0.4, 2.25, 0.95);
     // Roof (Blue painted metal)
     const ghRoofMat = new THREE.MeshStandardMaterial({color: 0x2c3e50, roughness: 0.8});
     const ghRoof = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.2, 2.4), ghRoofMat);
@@ -458,7 +480,6 @@ function buildClassroom() {
     // Depth is 2.0, so center z = -18.25
     guardHouseGrp.position.set(1.75, 0, -18.25);
     scene.add(guardHouseGrp);
-    obstacles.push(ghBody); // Solid obstacle
 
     // 2. Walk-through Metal Detector
     const mdGrp = new THREE.Group();
