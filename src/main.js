@@ -1139,7 +1139,8 @@ function setupUI() {
     // Mode Buttons
     document.getElementById('btn-edit-mode').addEventListener('click', () => setMode('EDIT'));
     document.getElementById('btn-walk-mode').addEventListener('click', () => setMode('WALK'));
-    document.getElementById('btn-exit-walk').addEventListener('click', () => setMode('EDIT'));
+    const exitBtn = document.getElementById('btn-exit-walk');
+    if (exitBtn) exitBtn.addEventListener('click', () => setMode('EDIT'));
 
     // Roof Toggle Checkbox
     const chkToggleRoof = document.getElementById('chk-toggle-roof');
