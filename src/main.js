@@ -227,11 +227,7 @@ function buildClassroom() {
     scene.add(fenceFrontRight);
     obstacles.push(fenceFrontRight);
 
-    // Dividing Wall (Between Big and Small Gates)
-    const dividingWall = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.5, 0.4), fenceMat);
-    dividingWall.position.set(1.75, 1.25, -pathLength / 2); // Covers x = 1 to 2.5
-    scene.add(dividingWall);
-    obstacles.push(dividingWall);
+    // The Dividing Wall has been replaced by the Guard House
 
     // Realistic Concrete Pillars
     const pillarMat = new THREE.MeshStandardMaterial({ color: 0xe5d3a5, roughness: 0.9 }); // Light Beige / Cream (Column ng Bakod)
@@ -391,30 +387,33 @@ function buildClassroom() {
     const guardHouseGrp = new THREE.Group();
     // Body (Concrete)
     const ghBodyMat = new THREE.MeshStandardMaterial({ color: 0xecf0f1, roughness: 0.9 });
-    const ghBody = new THREE.Mesh(new THREE.BoxGeometry(2.5, 2.5, 2.5), ghBodyMat);
+    const ghBody = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.5, 2.0), ghBodyMat); // Resized to fit between gates
     ghBody.position.y = 1.25;
     guardHouseGrp.add(ghBody);
     // Roof (Blue painted metal)
     const ghRoofMat = new THREE.MeshStandardMaterial({color: 0x2c3e50, roughness: 0.8});
-    const ghRoof = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.2, 2.9), ghRoofMat);
+    const ghRoof = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.2, 2.4), ghRoofMat);
     ghRoof.position.y = 2.6;
     guardHouseGrp.add(ghRoof);
     // Windows (Glass)
     const ghWinMat = new THREE.MeshStandardMaterial({color: 0x88ccff, transparent: true, opacity: 0.5, metalness: 0.8, roughness: 0.1});
-    const ghWin1 = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 0.1), ghWinMat); // Front window (facing street)
-    ghWin1.position.set(0, 1.5, -1.26);
+    const ghWin1 = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1, 0.1), ghWinMat); // Front window (facing street)
+    ghWin1.position.set(0, 1.5, -1.01);
     guardHouseGrp.add(ghWin1);
-    const ghWin2 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1, 2), ghWinMat); // Left window (facing gate)
-    ghWin2.position.set(-1.26, 1.5, 0);
+    const ghWin2 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1, 1.2), ghWinMat); // Right window (facing small gate)
+    ghWin2.position.set(0.76, 1.5, 0);
     guardHouseGrp.add(ghWin2);
+    const ghWin3 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1, 1.2), ghWinMat); // Left window (facing big gate)
+    ghWin3.position.set(-0.76, 1.5, 0);
+    guardHouseGrp.add(ghWin3);
     // Guard House Door (Steel)
     const ghDoorMat = new THREE.MeshStandardMaterial({color: 0x7f8c8d});
     const ghDoor = new THREE.Mesh(new THREE.BoxGeometry(0.8, 2, 0.1), ghDoorMat);
-    ghDoor.position.set(0, 1, 1.26); // Back door
+    ghDoor.position.set(0, 1, 1.01); // Back door
     guardHouseGrp.add(ghDoor);
     
-    // Position the Guard House near the pedestrian gate (x=4.5 is hinge, so x=6 is next to it)
-    guardHouseGrp.position.set(6.5, 0, -18.5);
+    // Position the Guard House EXACTLY at the dividing wall (x=1.75, z=-19)
+    guardHouseGrp.position.set(1.75, 0, -19);
     scene.add(guardHouseGrp);
     obstacles.push(ghBody); // Solid obstacle
 
