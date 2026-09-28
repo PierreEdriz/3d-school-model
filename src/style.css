@@ -95,6 +95,7 @@ input[type="number"] {
 
 .sidebar {
   width: 250px;
+  flex-shrink: 0;
   background-color: var(--bg-panel);
   border-right: 1px solid var(--border);
   padding: 15px;
@@ -128,6 +129,8 @@ h4 {
 
 #canvas-container {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
   position: relative;
   outline: none;
 }
