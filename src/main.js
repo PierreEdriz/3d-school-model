@@ -344,7 +344,7 @@ function buildClassroom() {
     bigGateLeftGroup.userData = {
         isOpen: false,
         openType: 'rotate',
-        openRot: -Math.PI / 2, // Swings outwards to street (-Z)
+        openRot: -1.3, // 75 degrees outwards, prevents clipping into pillar
         closeRot: 0
     };
     const bigGateLeftMesh = createSteelGate(2.5, 2.5, 'left');
@@ -359,7 +359,7 @@ function buildClassroom() {
     bigGateRightGroup.userData = {
         isOpen: false,
         openType: 'rotate',
-        openRot: Math.PI / 2, // Swings outwards to street (-Z)
+        openRot: 1.3, // 75 degrees outwards
         closeRot: 0
     };
     const bigGateRightMesh = createSteelGate(2.5, 2.5, 'right');
@@ -374,7 +374,7 @@ function buildClassroom() {
     smallGateGroup.userData = {
         isOpen: false,
         openType: 'rotate',
-        openRot: Math.PI / 2, // Swings outwards to street (-Z)
+        openRot: 1.3, // 75 degrees outwards
         closeRot: 0
     };
     const smallGateMesh = createSteelGate(2.0, 2.5, 'center');
