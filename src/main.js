@@ -384,8 +384,9 @@ function buildClassroom() {
     
     // 1. Guard House (Security Outpost)
     const guardHouseGrp = new THREE.Group();
-    // Body (Concrete)
-    const ghBodyMat = new THREE.MeshStandardMaterial({ color: 0xecf0f1, roughness: 0.9 });
+    // Body (Concrete - Matching the Fence)
+    const ghBodyMat = new THREE.MeshStandardMaterial({ color: 0xe5d3a5, roughness: 0.9 }); // Light Beige / Cream
+    applyBrownBottomShader(ghBodyMat);
     const ghBody = new THREE.Mesh(new THREE.BoxGeometry(2.0, 2.5, 2.0), ghBodyMat); // Body width 2.0 covers x=0.75 to 2.75
     ghBody.position.y = 1.25;
     guardHouseGrp.add(ghBody);
