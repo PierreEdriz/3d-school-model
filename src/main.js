@@ -412,6 +412,19 @@ function buildClassroom() {
     addGHWall(1.0, 2.5, 0.1, -0.5, 1.25, 0.95);
     addGHWall(0.2, 2.5, 0.1, 0.9, 1.25, 0.95);
     addGHWall(0.8, 0.5, 0.1, 0.4, 2.25, 0.95);
+    
+    // Small Corner Pillars for the Guard House
+    const ghPillarGeo = new THREE.BoxGeometry(0.2, 2.6, 0.2);
+    const addGHPillar = (x, z) => {
+        const p = new THREE.Mesh(ghPillarGeo, pillarMat);
+        p.position.set(x, 1.3, z);
+        guardHouseGrp.add(p);
+        obstacles.push(p);
+    };
+    addGHPillar(-1.0, -1.0); // Front-Left
+    addGHPillar(1.0, -1.0);  // Front-Right
+    addGHPillar(-1.0, 1.0);  // Back-Left
+    addGHPillar(1.0, 1.0);   // Back-Right
     // Roof (Blue painted metal)
     const ghRoofMat = new THREE.MeshStandardMaterial({color: 0x2c3e50, roughness: 0.8});
     const ghRoof = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.2, 2.4), ghRoofMat);
