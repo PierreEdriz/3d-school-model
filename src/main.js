@@ -36,6 +36,7 @@ const CLASS_WIDTH = 12;
 const SINGLE_ROOM_LENGTH = 18;
 const CLASS_LENGTH = SINGLE_ROOM_LENGTH * 6;
 const CLASS_HEIGHT = 3.5;
+const WALK_FLOOR_Y = 1.6;
 const WINDOW_WIDTH = 3.4;
 const WINDOW_OFFSET = 3.1;
 
@@ -111,6 +112,207 @@ function init() {
 
     // Set initial layout
     setupInitialClassroom();
+    createThirdFloor();
+    createSecondFloor();
+    createFirstFloor();
+    liftBuildingStackToGround();
+}
+
+function createThirdFloor() {
+    const thirdFloor = new THREE.Group();
+    thirdFloor.name = 'thirdFloor';
+    thirdFloor.position.y = -CLASS_HEIGHT;
+
+    // The 4th-floor obstacle registry is the collision source of truth.
+    // Mark every registered wall/structural blocker before cloning so the
+    // lower floors inherit exactly the same collision coverage.
+    obstacles.forEach((obstacle) => {
+        obstacle.userData.isWalkObstacle = true;
+    });
+
+    // Move the exterior ground below the new lower floor so it is not buried.
+    const groundPath = scene.getObjectByName('groundPath');
+    const streetGround = scene.getObjectByName('streetGround');
+    if (groundPath) groundPath.position.y -= CLASS_HEIGHT * 3;
+    if (streetGround) streetGround.position.y -= CLASS_HEIGHT * 3;
+
+    const excluded = new Set([
+        'groundPath',
+        'streetGround',
+        'oldRoof4',
+        'newRoof4',
+        'ceiling4',
+        'ceiling4Interior',
+        'canopy4',
+        'frontGable4',
+        'backGable4'
+    ]);
+
+    scene.children.slice().forEach((child) => {
+        if (child === thirdFloor || child === transformControls?.getHelper()) return;
+        if (!child.isMesh && !child.isGroup) return;
+        if (excluded.has(child.name)) return;
+        if (child.userData.noThirdFloorClone) return;
+
+        const duplicate = child.clone(true);
+        duplicate.traverse((part) => {
+            if (part.isMesh) {
+                part.castShadow = child.castShadow;
+                part.receiveShadow = child.receiveShadow;
+                if (part.userData.isWalkObstacle) obstacles.push(part);
+            }
+            if (part.isGroup && part.userData?.openType) {
+                part.userData.isOpen = false;
+                doorMeshes.push(part);
+            }
+        });
+        thirdFloor.add(duplicate);
+    });
+
+    scene.add(thirdFloor);
+}
+
+function createSecondFloor() {
+    const thirdFloor = scene.getObjectByName('thirdFloor');
+    if (!thirdFloor) return;
+
+    const secondFloor = thirdFloor.clone(true);
+    secondFloor.name = 'secondFloor';
+    secondFloor.position.y = -CLASS_HEIGHT * 2;
+    secondFloor.traverse((part) => {
+        if (part.isMesh && part.userData.isWalkObstacle) obstacles.push(part);
+        if (part.isGroup && part.userData?.openType) {
+            part.userData.isOpen = false;
+            doorMeshes.push(part);
+        }
+    });
+    scene.add(secondFloor);
+}
+
+function createFirstFloor() {
+    const secondFloor = scene.getObjectByName('secondFloor');
+    if (!secondFloor) return;
+
+    const firstFloor = secondFloor.clone(true);
+    firstFloor.name = 'firstFloor';
+    firstFloor.position.y = -CLASS_HEIGHT * 3;
+    firstFloor.traverse((part) => {
+        if (part.isMesh && part.userData.isWalkObstacle) obstacles.push(part);
+        if (part.isGroup && part.userData?.openType) {
+            part.userData.isOpen = false;
+            doorMeshes.push(part);
+        }
+    });
+
+    // Keep every structural post on the first floor continuous down to the
+    // slab.  Posts are local to this floor, so their base is local Y=0 and
+    // will meet the slab top when the group is placed at its final elevation.
+    firstFloor.traverse((part) => {
+        if (!part.isMesh) return;
+        const params = part.geometry?.parameters;
+        if (part.name === 'thirdFloorSource') {
+            // Match the room walking surface to the corridor box top.
+            part.position.y = 0.06;
+            part.material = part.material.clone();
+            part.material.color.set(0xb8b2a0);
+            return;
+        }
+        if (params?.width === 0.4 && params?.height === CLASS_HEIGHT && params?.depth === 0.4) {
+            part.scale.y = 1;
+            part.position.y = CLASS_HEIGHT / 2;
+        }
+    });
+
+    // Restore the two first-floor add-room floors now that the large slab is
+    // removed. They meet the corridor edge and use the same finish/color.
+    const firstFloorEndRoomMat = new THREE.MeshStandardMaterial({
+        color: 0xb8b2a0,
+        roughness: 0.9,
+        metalness: 0.0,
+        side: THREE.DoubleSide
+    });
+    const endRoomLength = SINGLE_ROOM_LENGTH / 3;
+    [-1, 1].forEach((side) => {
+        const endRoomFloor = new THREE.Mesh(
+            new THREE.BoxGeometry(CLASS_WIDTH, 0.06, endRoomLength),
+            firstFloorEndRoomMat
+        );
+        endRoomFloor.position.set(0, 0.03, side * (CLASS_LENGTH / 2 + endRoomLength / 2));
+        endRoomFloor.name = 'firstFloorEndRoomFloor';
+        endRoomFloor.receiveShadow = true;
+        firstFloor.add(endRoomFloor);
+    });
+
+    // Keep the far-end first-floor side opening clear by removing its side barrier set.
+    const endBarrierNames = new Set([
+        'endRoomRailing',
+        'endRoomTopRail',
+        'endGreenTube',
+        'endGreenUpright'
+    ]);
+    const endBarrierParts = [];
+    firstFloor.traverse((part) => {
+        if (endBarrierNames.has(part.name)) endBarrierParts.push(part);
+    });
+    endBarrierParts.forEach((part) => {
+        part.parent?.remove(part);
+        const obstacleIndex = obstacles.indexOf(part);
+        if (obstacleIndex !== -1) obstacles.splice(obstacleIndex, 1);
+    });
+
+    scene.add(firstFloor);
+}
+
+function addEndRoomFloors(floorName) {
+    const floorGroup = scene.getObjectByName(floorName);
+    if (!floorGroup) return;
+
+    const endRoomLength = SINGLE_ROOM_LENGTH / 3;
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0x8a8d8f, roughness: 0.95, metalness: 0.0, side: THREE.DoubleSide });
+    [-1, 1].forEach((side) => {
+        const endRoomFloor = new THREE.Mesh(
+            new THREE.BoxGeometry(CLASS_WIDTH + 0.04, 0.06, endRoomLength),
+            floorMat
+        );
+        endRoomFloor.position.set(0, 0, side * (CLASS_LENGTH / 2 + endRoomLength / 2));
+        endRoomFloor.name = `${floorName}EndRoomFloor`;
+        endRoomFloor.receiveShadow = true;
+        floorGroup.add(endRoomFloor);
+
+        const floorBridge = new THREE.Mesh(
+            new THREE.BoxGeometry(0.18, 0.06, endRoomLength - 0.18),
+            new THREE.MeshStandardMaterial({ color: 0xb8b2a0, roughness: 0.9, metalness: 0.0 })
+        );
+        floorBridge.position.set(CLASS_WIDTH / 2, 0, side * (CLASS_LENGTH / 2 + endRoomLength / 2));
+        floorBridge.name = `${floorName}EndRoomFloorBridge`;
+        floorBridge.receiveShadow = true;
+        floorGroup.add(floorBridge);
+    });
+}
+
+function liftBuildingStackToGround() {
+    const firstFloorBaseY = 0.00;
+
+    // Anchor cloned floors directly so repeated edits cannot accumulate Y
+    // offsets and make floors merge or drift apart.
+    const firstFloor = scene.getObjectByName('firstFloor');
+    const secondFloor = scene.getObjectByName('secondFloor');
+    const thirdFloor = scene.getObjectByName('thirdFloor');
+    if (firstFloor) firstFloor.position.y = firstFloorBaseY;
+    if (secondFloor) secondFloor.position.y = firstFloorBaseY + CLASS_HEIGHT;
+    if (thirdFloor) thirdFloor.position.y = firstFloorBaseY + CLASS_HEIGHT * 2;
+
+    // The original source geometry is the 4th floor. Its source baseline is
+    // zero, so place it one full floor above the third-floor clone.
+    const clonedFloors = new Set([firstFloor, secondFloor, thirdFloor]);
+    scene.children.forEach((child) => {
+        if (child === transformControls?.getHelper() || clonedFloors.has(child)) return;
+        if (child.name === 'groundPath' || child.name === 'streetGround') {
+            child.position.y = 0;
+            return;
+        }
+        if (child.isMesh || child.isGroup) child.position.y += firstFloorBaseY + CLASS_HEIGHT * 3;
+    });
 }
 
 function buildClassroom() {
@@ -119,9 +321,11 @@ function buildClassroom() {
     const floorMat = new THREE.MeshStandardMaterial({
         color: 0x8a8d8f, // Grayish concrete plain cement
         roughness: 0.95, // Non-skid finish (very rough, matte)
-        metalness: 0.0
+        metalness: 0.0,
+        side: THREE.DoubleSide
     });
     const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.name = 'thirdFloorSource';
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
     scene.add(floor);
@@ -137,6 +341,7 @@ function buildClassroom() {
         new THREE.BoxGeometry(2.2, 0.06, CLASS_LENGTH),
         corridorMat
     );
+    corridor.name = 'thirdFloorCorridorSource';
     corridor.position.set(corridorCenterX, 0.03, 0);
     corridor.receiveShadow = true;
     scene.add(corridor);
@@ -148,7 +353,7 @@ function buildClassroom() {
         metalness: 0.0
     });
     const corridorRailMat = new THREE.MeshStandardMaterial({
-        color: 0xf2ead2,
+        color: 0xeedcb0,
         roughness: 0.8,
         metalness: 0.0
     });
@@ -157,6 +362,7 @@ function buildClassroom() {
         new THREE.BoxGeometry(3.0, 0.18, CLASS_LENGTH),
         corridorStructureMat
     );
+    corridorCanopy.name = 'canopy4';
     corridorCanopy.position.set(corridorCenterX, CLASS_HEIGHT + 0.05, 0);
     corridorCanopy.castShadow = true;
     corridorCanopy.receiveShadow = true;
@@ -254,8 +460,8 @@ function buildClassroom() {
     // The dark gray apron has been removed so the gravel yard goes straight up to the walls.
 
     // Rock / Gravel Yard (Surrounding the room)
-    const pathWidth = CLASS_WIDTH + 40; // 10 meters on left and right
-    const pathLength = CLASS_LENGTH + 40; // 10 meters in front and back
+    const pathWidth = CLASS_WIDTH + 200;
+    const pathLength = CLASS_LENGTH + 200;
     const pathGeo = new THREE.PlaneGeometry(pathWidth, pathLength);
 
     function createGravelTexture() {
@@ -290,25 +496,24 @@ function buildClassroom() {
 
     const gravelTex = createGravelTexture();
 
-    const pathMat = new THREE.MeshStandardMaterial({
-        map: gravelTex,
+    const groundMat = new THREE.MeshStandardMaterial({
+        color: 0x707070,
         roughness: 1.0,
         metalness: 0.0
     });
+    const pathMat = groundMat;
     const path = new THREE.Mesh(pathGeo, pathMat);
+    path.name = 'groundPath';
     path.rotation.x = -Math.PI / 2;
     path.position.y = -0.005; // Slightly below floor to avoid z-fighting
     path.receiveShadow = true;
     scene.add(path);
 
     // Sidewalk Outside Fence
-    const streetGeo = new THREE.PlaneGeometry(54, CLASS_LENGTH + 44); // 2m border around the 30x38 fence
-    const streetMat = new THREE.MeshStandardMaterial({
-        map: gravelTex,
-        roughness: 1.0,
-        metalness: 0.0
-    }); // Gravel ground outside the fence as well
+    const streetGeo = new THREE.PlaneGeometry(220, CLASS_LENGTH + 220);
+    const streetMat = groundMat; // Same single-color ground outside the fence
     const street = new THREE.Mesh(streetGeo, streetMat);
+    street.name = 'streetGround';
     street.rotation.x = -Math.PI / 2;
     street.position.set(0, -0.01, 0); // Centered under the school
     street.receiveShadow = true;
@@ -335,6 +540,7 @@ function buildClassroom() {
 
     // Roof & Ceiling Group
     const roofGroup = new THREE.Group();
+    roofGroup.name = 'oldRoof4';
     scene.add(roofGroup);
     const roofCenterOffsetX = 0;
     roofGroup.position.x = roofCenterOffsetX;
@@ -349,6 +555,7 @@ function buildClassroom() {
         side: THREE.DoubleSide
     });
     const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
+    ceiling.name = 'ceiling4';
     ceiling.rotation.x = Math.PI / 2;
     ceiling.position.y = CLASS_HEIGHT;
     roofGroup.add(ceiling);
@@ -496,11 +703,15 @@ function buildClassroom() {
             new THREE.ExtrudeGeometry(endGableShape, { depth: 0.2, bevelEnabled: false }),
             wallMat
         );
+        endGable.userData.noThirdFloorClone = true;
         endGable.position.set(0, CLASS_HEIGHT, z + (z < 0 ? -endRoomLength / 2 : endRoomLength / 2));
         scene.add(endGable);
 
         const packageRoomFloor = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.08, endRoomLength), corridorMat);
-        packageRoomFloor.position.set(corridorCenterX, 0.04, z);
+        packageRoomFloor.name = 'packageRoomFloor';
+        // Match the corridor floor's top surface to remove the visible joint
+        // where the attached room meets the corridor on every floor.
+        packageRoomFloor.position.set(corridorCenterX, 0.02, z);
         packageRoomFloor.receiveShadow = true;
         scene.add(packageRoomFloor);
 
@@ -566,6 +777,7 @@ function buildClassroom() {
             new THREE.BoxGeometry(0.14, 0.95, endRoomLength),
             corridorRailMat
         );
+        endRoomRailing.name = 'endRoomRailing';
         endRoomRailing.position.set(corridorOuterX, 0.48, z);
         endRoomRailing.userData.isWalkObstacle = true;
         scene.add(endRoomRailing);
@@ -575,6 +787,7 @@ function buildClassroom() {
             new THREE.BoxGeometry(0.18, 0.12, endRoomLength),
             corridorStructureMat
         );
+        endRoomTopRail.name = 'endRoomTopRail';
         endRoomTopRail.position.set(corridorOuterX, 1.02, z);
         scene.add(endRoomTopRail);
 
@@ -582,6 +795,7 @@ function buildClassroom() {
             new THREE.CylinderGeometry(0.06, 0.06, endRoomLength, 16),
             greenTubeMat
         );
+        endGreenTube.name = 'endGreenTube';
         endGreenTube.rotation.x = Math.PI / 2;
         endGreenTube.position.set(corridorOuterX, 1.32, z);
         endGreenTube.castShadow = true;
@@ -601,6 +815,7 @@ function buildClassroom() {
                 new THREE.CylinderGeometry(0.07, 0.07, 0.42, 16),
                 greenTubeMat
             );
+            endGreenUpright.name = 'endGreenUpright';
             endGreenUpright.position.set(corridorOuterX, 1.14, z - endRoomLength / 2 + endRoomLength * ratio);
             endGreenUpright.castShadow = true;
             scene.add(endGreenUpright);
@@ -611,6 +826,7 @@ function buildClassroom() {
             new THREE.BoxGeometry(2.2, 0.95, 0.14),
             corridorRailMat
         );
+        endSideRailing.name = 'endSideRailing';
         endSideRailing.position.set(corridorCenterX, 0.48, endZ);
         endSideRailing.userData.isWalkObstacle = true;
         scene.add(endSideRailing);
@@ -620,6 +836,7 @@ function buildClassroom() {
             new THREE.BoxGeometry(2.2, 0.12, 0.18),
             corridorStructureMat
         );
+        endSideTopRail.name = 'endSideTopRail';
         endSideTopRail.position.set(corridorCenterX, 1.02, endZ);
         scene.add(endSideTopRail);
 
@@ -627,6 +844,7 @@ function buildClassroom() {
             new THREE.CylinderGeometry(0.06, 0.06, 2.2, 16),
             greenTubeMat
         );
+        endSideGreenTube.name = 'endSideGreenTube';
         endSideGreenTube.rotation.z = Math.PI / 2;
         endSideGreenTube.position.set(corridorCenterX, 1.32, endZ);
         endSideGreenTube.castShadow = true;
@@ -651,6 +869,7 @@ function buildClassroom() {
     const pedimentGeo = new THREE.ExtrudeGeometry(pedimentShape, extrudeSettings);
 
     const frontPediment = new THREE.Mesh(pedimentGeo, pedimentMat);
+    frontPediment.name = 'frontGable4';
     // Extrude goes +Z. Front wall occupies [CLASS_LENGTH/2 - 0.1, CLASS_LENGTH/2 + 0.1]. Place at -0.1 to match.
     frontPediment.position.set(roofCenterOffsetX, CLASS_HEIGHT, CLASS_LENGTH / 2 - 0.1);
     scene.add(frontPediment); // Add to scene, not roofGroup, so it stays when roof is hidden
@@ -658,6 +877,7 @@ function buildClassroom() {
     frontPediment.visible = false;
 
     const backPediment = new THREE.Mesh(pedimentGeo, pedimentMat);
+    backPediment.name = 'backGable4';
     // Back wall occupies [-CLASS_LENGTH/2 - 0.1, -CLASS_LENGTH/2 + 0.1]. Place at -0.1 to match.
     backPediment.position.set(roofCenterOffsetX, CLASS_HEIGHT, -CLASS_LENGTH / 2 - 0.1);
     scene.add(backPediment);
@@ -671,6 +891,7 @@ function buildClassroom() {
 
     // New roof based on the current room + additional-room footprint.
     const newRoofGroup = new THREE.Group();
+    newRoofGroup.name = 'newRoof4';
     const roofTextureCanvas = document.createElement('canvas');
     roofTextureCanvas.width = 128;
     roofTextureCanvas.height = 128;
@@ -809,6 +1030,7 @@ function buildClassroom() {
         new THREE.BoxGeometry(interiorCeilingWidth, 0.08, newRoofLength - 0.12),
         interiorCeilingMat
     );
+    interiorCeiling.name = 'ceiling4Interior';
     interiorCeiling.position.set(
         (corridorOuterX - CLASS_WIDTH / 2) / 2,
         CLASS_HEIGHT - 0.12,
@@ -1232,7 +1454,7 @@ function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 
         const doorGeo = new THREE.BoxGeometry(0.1, doorHeight, doorWidth);
         const doorGroup1 = new THREE.Group();
         doorGroup1.position.set(CLASS_WIDTH / 2, 0, door1Z + doorWidth / 2);
-        doorGroup1.userData = { isOpen: false, openType: 'rotate', openRot: Math.PI / 2, closeRot: 0 };
+        doorGroup1.userData = { isOpen: false, openType: 'rotate', openRot: Math.PI / 2, closeRot: 0, openingZ: door1Z };
         const dMesh1 = createPanelDoor(doorWidth, doorHeight, 0.05, doorMeshMat, 'left');
         dMesh1.position.set(0, doorHeight / 2, -doorWidth / 2);
         doorGroup1.add(dMesh1);
@@ -1242,7 +1464,7 @@ function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 
 
         const doorGroup2 = new THREE.Group();
         doorGroup2.position.set(CLASS_WIDTH / 2, 0, door2Z - doorWidth / 2);
-        doorGroup2.userData = { isOpen: false, openType: 'rotate', openRot: -Math.PI / 2, closeRot: 0 };
+        doorGroup2.userData = { isOpen: false, openType: 'rotate', openRot: -Math.PI / 2, closeRot: 0, openingZ: door2Z };
         const dMesh2 = createPanelDoor(doorWidth, doorHeight, 0.05, doorMeshMat, 'right');
         dMesh2.position.set(0, doorHeight / 2, doorWidth / 2);
         doorGroup2.add(dMesh2);
@@ -1274,6 +1496,7 @@ function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 
             new THREE.ExtrudeGeometry(dividerGableShape, { depth: 0.2, bevelEnabled: false }),
             wallMat
         );
+        dividerGable.userData.noThirdFloorClone = true;
         dividerGable.position.set(0, CLASS_HEIGHT, zCenter + SINGLE_ROOM_LENGTH / 2);
         scene.add(dividerGable);
     }
@@ -1497,7 +1720,7 @@ function setMode(mode) {
         camera = walkCamera;
 
         // Position player outside the front gate on the new small sidewalk
-        walkCamera.position.set(0, 1.6, -20.5); // On the 2m sidewalk just outside the gate
+        walkCamera.position.set(0, WALK_FLOOR_Y, -CLASS_LENGTH / 2 - 12); // Spawn well outside the building front
         walkCamera.rotation.set(0, Math.PI, 0); // Face towards the school (+Z)
 
         pointerLockControls.lock();
@@ -1594,7 +1817,10 @@ function interact() {
     // Check doors
     let doorInteracted = false;
     doorMeshes.forEach((door) => {
-        const dist = walkCamera.position.distanceTo(door.position);
+        const doorWorldPosition = new THREE.Vector3();
+        (door.children[0] || door).getWorldPosition(doorWorldPosition);
+        doorWorldPosition.z = door.userData.openingZ ?? doorWorldPosition.z;
+        const dist = walkCamera.position.distanceTo(doorWorldPosition);
         if (dist < 4.0) { // Increased interaction distance for large gates
             door.userData.isOpen = !door.userData.isOpen;
             doorInteracted = true;
@@ -1628,7 +1854,10 @@ function updateWalkHUD() {
     let anyOpen = false;
 
     doorMeshes.forEach((door) => {
-        const dist = walkCamera.position.distanceTo(door.position);
+        const doorWorldPosition = new THREE.Vector3();
+        (door.children[0] || door).getWorldPosition(doorWorldPosition);
+        doorWorldPosition.z = door.userData.openingZ ?? doorWorldPosition.z;
+        const dist = walkCamera.position.distanceTo(doorWorldPosition);
         if (dist < 3.0) {
             canInteractDoor = true;
             if (door.userData.isOpen) anyOpen = true;
@@ -1656,6 +1885,7 @@ function updateWalkHUD() {
 
 function checkCollision(position) {
     const radius = 0.3; // Player radius
+    const collisionStart = position.clone();
 
     // Only the low hallway wall blocks crossing; railing/tubes remain non-solid.
     const hallwayWallX = CLASS_WIDTH / 2 + 2.2;
@@ -1670,15 +1900,15 @@ function checkCollision(position) {
 
     // World bounds
     // Include both attached end-room/free-space areas in the walkable length.
-    const corridorEnd = CLASS_LENGTH / 2 + SINGLE_ROOM_LENGTH / 3 + 1;
+    const corridorEnd = 110;
     if (position.z < -corridorEnd) position.z = -corridorEnd;
     if (position.z > corridorEnd) position.z = corridorEnd;
-    if (position.x < -25) position.x = -25;
-    if (position.x > 25) position.x = 25;
+    if (position.x < -110) position.x = -110;
+    if (position.x > 110) position.x = 110;
 
     // Perimeter Fence (x: -15 to 15, z: -19 to 19)
-    const fenceX = 15;
-    const fenceZ = 19;
+    const fenceX = 110;
+    const fenceZ = 110;
 
     // Left/Right Fence
     if (position.x > fenceX - radius && position.x < fenceX + radius) {
@@ -1712,28 +1942,37 @@ function checkCollision(position) {
         }
     }
 
-    // Right wall (Doorway)
-    if (position.z > -classZ + radius && position.z < classZ - radius) {
-        if (position.x > classX - radius && position.x < classX + radius) {
-            const openDoorHere = doorMeshes.some((door) =>
-                door.userData.isOpen &&
-                Math.abs(position.z - (door.position.z + (door.children[0]?.position.z || 0))) < 1.6 / 2 - radius
-            );
-
-            if (openDoorHere) {
-                // Pass
-            } else {
-                if (position.x < classX) position.x = classX - radius; else position.x = classX + radius;
-            }
-        }
-    }
-
     // Obstacle Check (walls and explicitly marked walk obstacles).
+    const openDoorAtPosition = doorMeshes.some((door) =>
+        door.userData.isOpen &&
+        (() => {
+            const doorWorldPosition = new THREE.Vector3();
+            (door.children[0] || door).getWorldPosition(doorWorldPosition);
+            doorWorldPosition.z = door.userData.openingZ ?? doorWorldPosition.z;
+            return Math.abs(position.z - doorWorldPosition.z) < 1.6 / 2 - radius;
+        })()
+    );
     for (let obs of obstacles) {
-        if (!obs.userData || !obs.userData.isWalkObstacle) continue;
+        // The obstacles list is already the explicit list of solid model
+        // parts. Open door panels are the only registered parts that must be
+        // ignored while their door group is open.
+        if (obs.parent?.userData?.isOpen) continue;
 
         // Simple AABB approximation
         const box = new THREE.Box3().setFromObject(obs);
+
+        // Only collide with walls on the player's current floor. Without
+        // this vertical check, cloned upper-floor walls would block the
+        // first-floor player even though they are far above.
+        if (box.max.y < position.y - 1.0 || box.min.y > position.y + 1.0) continue;
+
+        // Leave the actual doorway clear while its door is open. This also
+        // prevents cloned wall segments from sealing the opening.
+        if (openDoorAtPosition && box.min.x <= CLASS_WIDTH / 2 + radius &&
+            box.max.x >= CLASS_WIDTH / 2 - radius &&
+            position.z > -CLASS_LENGTH / 2 && position.z < CLASS_LENGTH / 2) {
+            continue;
+        }
 
         // Check intersection with player cylinder
         if (position.x + radius > box.min.x && position.x - radius < box.max.x &&
@@ -1754,6 +1993,17 @@ function checkCollision(position) {
                 position.z += minDz;
             }
         }
+    }
+
+    // Prevent stacked wall/door-frame corrections from throwing the player
+    // across the hallway. A collision may only nudge the player by one
+    // movement step, never teleport them.
+    const correction = position.clone().sub(collisionStart);
+    const maxCorrection = 0.65;
+    if (correction.length() > maxCorrection) {
+        // Reject an invalid multi-wall correction instead of moving the
+        // player through the doorway or back to an unrelated location.
+        position.copy(collisionStart);
     }
 
     return position;
@@ -1805,8 +2055,8 @@ function animate() {
 
             jumpVelocity -= 16.0 * delta;
             position.y += jumpVelocity * delta;
-            if (position.y <= 1.6) {
-                position.y = 1.6;
+            if (position.y <= WALK_FLOOR_Y) {
+                position.y = WALK_FLOOR_Y;
                 jumpVelocity = 0;
                 canJump = true;
             }
