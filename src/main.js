@@ -30,9 +30,12 @@ let raycaster, mouse;
 let selectedObject = null;
 
 // Classroom Dimensions
-const CLASS_WIDTH = 10;
-const CLASS_LENGTH = 18;
+const CLASS_WIDTH = 12;
+const SINGLE_ROOM_LENGTH = 18;
+const CLASS_LENGTH = SINGLE_ROOM_LENGTH * 6;
 const CLASS_HEIGHT = 3.5;
+const WINDOW_WIDTH = 3.4;
+const WINDOW_OFFSET = 3.1;
 
 let doorMeshes = [];
 
@@ -72,7 +75,7 @@ function init() {
 
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
     dirLight.position.set(-10, 10, -10);
-    dirLight.castShadow = true;
+    dirLight.castShadow = false;
     scene.add(dirLight);
 
     // Classroom Base
@@ -121,11 +124,136 @@ function buildClassroom() {
     floor.receiveShadow = true;
     scene.add(floor);
 
+    // Straight corridor running continuously along the classroom door side.
+    const corridorCenterX = CLASS_WIDTH / 2 + 1.1;
+    const corridorMat = new THREE.MeshStandardMaterial({
+        color: 0xb8b2a0,
+        roughness: 0.9,
+        metalness: 0.0
+    });
+    const corridor = new THREE.Mesh(
+        new THREE.BoxGeometry(2.2, 0.06, CLASS_LENGTH),
+        corridorMat
+    );
+    corridor.position.set(corridorCenterX, 0.03, 0);
+    corridor.receiveShadow = true;
+    scene.add(corridor);
+
+    // Covered-school-corridor details: canopy, posts, and front railing.
+    const corridorStructureMat = new THREE.MeshStandardMaterial({
+        color: 0xe5d3a5,
+        roughness: 0.85,
+        metalness: 0.0
+    });
+    const corridorRailMat = new THREE.MeshStandardMaterial({
+        color: 0xf2ead2,
+        roughness: 0.8,
+        metalness: 0.0
+    });
+
+    const corridorCanopy = new THREE.Mesh(
+        new THREE.BoxGeometry(3.0, 0.18, CLASS_LENGTH),
+        corridorStructureMat
+    );
+    corridorCanopy.position.set(corridorCenterX, CLASS_HEIGHT + 0.05, 0);
+    corridorCanopy.castShadow = true;
+    corridorCanopy.receiveShadow = true;
+    scene.add(corridorCanopy);
+
+    const corridorOuterX = CLASS_WIDTH / 2 + 2.2;
+    const corridorPostPositions = [];
+    const corridorPosts = [];
+    for (let i = 0; i <= 6; i++) {
+        corridorPostPositions.push(-CLASS_LENGTH / 2 + i * SINGLE_ROOM_LENGTH);
+    }
+    for (let i = 0; i < 6; i++) {
+        const roomCenter = -CLASS_LENGTH / 2 + SINGLE_ROOM_LENGTH / 2 + i * SINGLE_ROOM_LENGTH;
+        corridorPostPositions.push(roomCenter - WINDOW_OFFSET, roomCenter + WINDOW_OFFSET);
+    }
+    corridorPostPositions.forEach((z) => {
+        const post = new THREE.Mesh(
+            new THREE.BoxGeometry(0.4, CLASS_HEIGHT, 0.4),
+            corridorStructureMat
+        );
+        post.position.set(corridorOuterX, CLASS_HEIGHT / 2, z);
+        post.castShadow = true;
+        scene.add(post);
+        corridorPosts.push(post);
+    });
+
+    const corridorBalustrade = new THREE.Mesh(
+        new THREE.BoxGeometry(0.14, 0.95, CLASS_LENGTH),
+        corridorRailMat
+    );
+    corridorBalustrade.position.set(corridorOuterX, 0.48, 0);
+    corridorBalustrade.castShadow = true;
+    scene.add(corridorBalustrade);
+
+    const corridorTopRail = new THREE.Mesh(
+        new THREE.BoxGeometry(0.18, 0.12, CLASS_LENGTH),
+        corridorStructureMat
+    );
+    corridorTopRail.position.set(corridorOuterX, 1.02, 0);
+    corridorTopRail.castShadow = true;
+    scene.add(corridorTopRail);
+
+    const greenTubeMat = new THREE.MeshStandardMaterial({ color: 0x9dc359, roughness: 0.65, metalness: 0.15 });
+    const terraceGreenTube = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.06, CLASS_LENGTH, 16),
+        greenTubeMat
+    );
+    terraceGreenTube.rotation.x = Math.PI / 2;
+    terraceGreenTube.position.set(corridorOuterX, 1.32, 0);
+    terraceGreenTube.castShadow = true;
+    scene.add(terraceGreenTube);
+
+    const corridorUpperHorizontalPost = new THREE.Mesh(
+        new THREE.BoxGeometry(0.4, 0.4, CLASS_LENGTH),
+        corridorStructureMat
+    );
+    corridorUpperHorizontalPost.position.set(corridorOuterX, CLASS_HEIGHT - 0.2, 0);
+    corridorUpperHorizontalPost.castShadow = true;
+    scene.add(corridorUpperHorizontalPost);
+
+    corridorPostPositions.forEach((z) => {
+        const terraceGreenTubeSupport = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.08, 0.08, 1.32, 16),
+            greenTubeMat
+        );
+        terraceGreenTubeSupport.position.set(corridorOuterX + 0.12, 0.66, z);
+        terraceGreenTubeSupport.castShadow = true;
+        scene.add(terraceGreenTubeSupport);
+    });
+
+    const centerGreenTubeSupport = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.08, 0.08, 1.32, 16),
+        greenTubeMat
+    );
+    centerGreenTubeSupport.position.set(corridorOuterX + 0.12, 0.66, 0);
+    centerGreenTubeSupport.castShadow = true;
+    scene.add(centerGreenTubeSupport);
+
+    // Three green uprights in the middle of every bay between the main posts.
+    const sortedRailingPosts = [...new Set(corridorPostPositions)].sort((a, b) => a - b);
+    for (let i = 0; i < sortedRailingPosts.length - 1; i++) {
+        const startZ = sortedRailingPosts[i];
+        const endZ = sortedRailingPosts[i + 1];
+        [0.25, 0.5, 0.75].forEach((ratio) => {
+            const visibleGreenUpright = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.07, 0.07, 0.42, 16),
+                greenTubeMat
+            );
+            visibleGreenUpright.position.set(corridorOuterX, 1.14, startZ + (endZ - startZ) * ratio);
+            visibleGreenUpright.castShadow = true;
+            scene.add(visibleGreenUpright);
+        });
+    }
+
     // The dark gray apron has been removed so the gravel yard goes straight up to the walls.
 
     // Rock / Gravel Yard (Surrounding the room)
-    const pathWidth = CLASS_WIDTH + 20; // 10 meters on left and right
-    const pathLength = CLASS_LENGTH + 20; // 10 meters in front and back
+    const pathWidth = CLASS_WIDTH + 40; // 10 meters on left and right
+    const pathLength = CLASS_LENGTH + 40; // 10 meters in front and back
     const pathGeo = new THREE.PlaneGeometry(pathWidth, pathLength);
 
     function createGravelTexture() {
@@ -172,7 +300,7 @@ function buildClassroom() {
     scene.add(path);
 
     // Sidewalk Outside Fence
-    const streetGeo = new THREE.PlaneGeometry(34, 42); // 2m border around the 30x38 fence
+    const streetGeo = new THREE.PlaneGeometry(54, CLASS_LENGTH + 44); // 2m border around the 30x38 fence
     const streetMat = new THREE.MeshStandardMaterial({
         map: gravelTex,
         roughness: 1.0,
@@ -201,334 +329,14 @@ function buildClassroom() {
         };
     }
 
-    // Perimeter Fence (Bakod)
-    const fenceMat = new THREE.MeshStandardMaterial({ color: 0xfdf8e2 }); // Very Light Beige (Bakod Mismo)
-    applyBrownBottomShader(fenceMat);
-    // Left Fence
-    const fenceLeft = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.5, pathLength), fenceMat);
-    fenceLeft.position.set(-pathWidth / 2, 1.25, 0);
-    scene.add(fenceLeft);
-    obstacles.push(fenceLeft);
-
-    // Right Fence
-    const fenceRight = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.5, pathLength), fenceMat);
-    fenceRight.position.set(pathWidth / 2, 1.25, 0);
-    scene.add(fenceRight);
-    obstacles.push(fenceRight);
-
-    // Front Fence (Split for gates)
-    const fenceFrontLeft = new THREE.Mesh(new THREE.BoxGeometry(11, 2.5, 0.2), fenceMat);
-    fenceFrontLeft.position.set(-9.5, 1.25, -pathLength / 2); // Covers x = -15 to -4
-    scene.add(fenceFrontLeft);
-    obstacles.push(fenceFrontLeft);
-
-    const fenceFrontRight = new THREE.Mesh(new THREE.BoxGeometry(10.5, 2.5, 0.2), fenceMat);
-    fenceFrontRight.position.set(9.75, 1.25, -pathLength / 2); // Covers x = 4.5 to 15
-    scene.add(fenceFrontRight);
-    obstacles.push(fenceFrontRight);
-
-    // The Dividing Wall is replaced by the Guard House
-
-    // Realistic Concrete Pillars
-    const pillarMat = new THREE.MeshStandardMaterial({ color: 0xe5d3a5, roughness: 0.9 }); // Light Beige / Cream (Column ng Bakod)
-    applyBrownBottomShader(pillarMat);
-    function createPillar(px, pz, ph) {
-        const p = new THREE.Mesh(new THREE.BoxGeometry(0.5, ph, 0.5), pillarMat);
-        p.position.set(px, ph / 2, pz);
-        scene.add(p);
-        obstacles.push(p);
-    }
-
-    // Gate Pillars (2.7m tall, slightly taller than the 2.5m fence)
-    createPillar(-4, -19, 2.7);  // Left of Big Gate
-    // Inner pillars removed: Guard House serves as the pillars
-    createPillar(4.5, -19, 2.7); // Right of Small Gate
-
-    // Additional pillars along the front fence (2.6m tall)
-    createPillar(-7, -19, 2.6);
-    createPillar(-11, -19, 2.6);
-
-    createPillar(8, -19, 2.6);
-    createPillar(11.5, -19, 2.6);
-
-    // Left and Right Fence Pillars (38m length, 10 sections)
-    for (let i = 0; i <= 10; i++) {
-        let z = -19 + i * 3.8;
-        createPillar(-15, z, 2.6); // Left wall
-        createPillar(15, z, 2.6);  // Right wall
-    }
-
-    // Back Fence Pillars (30m length, 8 sections)
-    for (let i = 1; i <= 7; i++) {
-        let x = -15 + i * (30 / 8);
-        createPillar(x, 19, 2.6);
-    }
-
-
-
-    // Gates (Interactive) - Railing / Grills
-    const gateMat = new THREE.MeshStandardMaterial({ color: 0x4e8771, metalness: 0.6, roughness: 0.3 }); // Green Tone
-
-    function createSteelGate(gWidth, gHeight, archType = 'center') {
-        const group = new THREE.Group();
-        const frameMat = gateMat;
-
-        // Horizontal bars
-        const bottomBar = new THREE.Mesh(new THREE.BoxGeometry(gWidth, 0.05, 0.05), frameMat);
-        bottomBar.position.set(0, 0.2, 0);
-        group.add(bottomBar);
-        const midBar = new THREE.Mesh(new THREE.BoxGeometry(gWidth, 0.05, 0.05), frameMat);
-        midBar.position.set(0, 1.0, 0);
-        group.add(midBar);
-
-        const sideHeight = gHeight - 0.4; // Base height at edges
-        const archRise = 0.4; // Extra height for arch peak
-
-        // Vertical bars
-        const innerWidth = gWidth - 0.08; // Space between side frames
-        const numBars = Math.floor(innerWidth / 0.15); // Number of gaps (numBars + 1 total bars)
-        const totalSpan = numBars * 0.15;
-        const padding = (innerWidth - totalSpan) / 2;
-        const startX = (-gWidth / 2 + 0.04) + padding;
-
-        for (let i = 0; i <= numBars; i++) {
-            const x = startX + i * 0.15;
-
-            // Normalize x to 0..1 from left to right
-            let t = (x + gWidth / 2) / gWidth;
-            let h = sideHeight;
-            if (archType === 'left') {
-                h += archRise * Math.sin(t * Math.PI / 2); // Rises from left to right
-            } else if (archType === 'right') {
-                h += archRise * Math.sin((1 - t) * Math.PI / 2); // Rises from right to left
-            } else {
-                h += archRise * Math.sin(t * Math.PI); // Peaks in center
-            }
-
-            const vBar = new THREE.Mesh(new THREE.BoxGeometry(0.03, h, 0.03), frameMat);
-            vBar.position.set(x, h / 2, 0);
-
-            // Spike on top
-            const spike = new THREE.Mesh(new THREE.ConeGeometry(0.02, 0.1, 4), frameMat);
-            spike.position.set(x, h + 0.05, 0);
-
-            group.add(vBar);
-            group.add(spike);
-        }
-
-        // Side frames
-        let hLeft = sideHeight;
-        if (archType === 'right') hLeft += archRise;
-
-        let hRight = sideHeight;
-        if (archType === 'left') hRight += archRise;
-
-        const leftFrame = new THREE.Mesh(new THREE.BoxGeometry(0.08, hLeft, 0.05), frameMat);
-        leftFrame.position.set(-gWidth / 2, hLeft / 2, 0);
-        group.add(leftFrame);
-        const rightFrame = new THREE.Mesh(new THREE.BoxGeometry(0.08, hRight, 0.05), frameMat);
-        rightFrame.position.set(gWidth / 2, hRight / 2, 0);
-        group.add(rightFrame);
-
-        return group;
-    }
-
-    // Big Gate Left - 2.2m wide, Hinge on the front-inner edge of left pillar (x=-3.725, z=-19.25)
-    const bigGateLeftGroup = new THREE.Group();
-    bigGateLeftGroup.position.set(-3.725, 0, -pathLength / 2 - 0.25); // Hinge at front corner
-    bigGateLeftGroup.userData = {
-        isOpen: false,
-        openType: 'rotate',
-        openRot: 1.5, // 85 degrees outwards to the street
-        closeRot: 0
-    };
-    const bigGateLeftMesh = createSteelGate(2.2, 2.5, 'left');
-    bigGateLeftMesh.position.set(1.1, 0, 0); // Offset half width
-    bigGateLeftGroup.add(bigGateLeftMesh);
-    scene.add(bigGateLeftGroup);
-    doorMeshes.push(bigGateLeftGroup);
-
-    // Big Gate Right - 2.2m wide, Hinge on the front-inner edge of right pillar (x=0.725)
-    const bigGateRightGroup = new THREE.Group();
-    bigGateRightGroup.position.set(0.725, 0, -pathLength / 2 - 0.25); // Hinge at front corner
-    bigGateRightGroup.userData = {
-        isOpen: false,
-        openType: 'rotate',
-        openRot: -1.5, // 85 degrees outwards to the street
-        closeRot: 0
-    };
-    const bigGateRightMesh = createSteelGate(2.2, 2.5, 'right');
-    bigGateRightMesh.position.set(-1.1, 0, 0); // Offset half width
-    bigGateRightGroup.add(bigGateRightMesh);
-    scene.add(bigGateRightGroup);
-    doorMeshes.push(bigGateRightGroup);
-
-    // Small Gate (Pedestrians) - 1.45m wide, Hinge on the front-left face of the far right pillar (x=4.225)
-    const smallGateGroup = new THREE.Group();
-    smallGateGroup.position.set(4.225, 0, -pathLength / 2 - 0.25); // Hinge at front corner
-    smallGateGroup.userData = {
-        isOpen: false,
-        openType: 'rotate',
-        openRot: -1.5, // 85 degrees outwards to the street
-        closeRot: 0
-    };
-    const smallGateMesh = createSteelGate(1.45, 2.5, 'center');
-    smallGateMesh.position.set(-0.725, 0, 0); // Offset half width
-    smallGateGroup.add(smallGateMesh);
-    scene.add(smallGateGroup);
-    doorMeshes.push(smallGateGroup);
-
-    // ==========================================
-    // SECURITY FEATURES: Guard House & Metal Detector
-    // ==========================================
     
-    // 1. Guard House (Security Outpost)
-    const guardHouseGrp = new THREE.Group();
-    // Body Walls (Concrete - Matching the Fence wall color)
-    const ghBodyMat = new THREE.MeshStandardMaterial({ color: 0xfdf8e2, roughness: 0.9 }); // Very Light Beige
-    applyBrownBottomShader(ghBodyMat);
-    
-    const addGHWall = (w, h, d, x, y, z) => {
-        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), ghBodyMat);
-        m.position.set(x, y, z);
-        guardHouseGrp.add(m);
-        obstacles.push(m);
-    };
-    
-    // Front Wall (with window hole)
-    addGHWall(2.0, 1.0, 0.1, 0, 0.5, -0.95);
-    addGHWall(2.0, 0.5, 0.1, 0, 2.25, -0.95);
-    // Left Wall (with window hole)
-    addGHWall(0.1, 1.0, 2.0, -0.95, 0.5, 0);
-    addGHWall(0.1, 0.5, 2.0, -0.95, 2.25, 0);
-    addGHWall(0.1, 1.0, 0.2, -0.95, 1.5, -0.9);
-    addGHWall(0.1, 1.0, 0.2, -0.95, 1.5, 0.9);
-    // Right Wall (with window hole)
-    addGHWall(0.1, 1.0, 2.0, 0.95, 0.5, 0);
-    addGHWall(0.1, 0.5, 2.0, 0.95, 2.25, 0);
-    addGHWall(0.1, 1.0, 0.2, 0.95, 1.5, -0.9);
-    addGHWall(0.1, 1.0, 0.2, 0.95, 1.5, 0.9);
-    // Back Wall (with door hole at x=0.0 to 0.8)
-    addGHWall(1.0, 2.5, 0.1, -0.5, 1.25, 0.95);
-    addGHWall(0.2, 2.5, 0.1, 0.9, 1.25, 0.95);
-    addGHWall(0.8, 0.5, 0.1, 0.4, 2.25, 0.95);
-    
-    // Small Corner Pillars for the Guard House
-    const ghPillarGeo = new THREE.BoxGeometry(0.2, 2.6, 0.2);
-    const addGHPillar = (x, z) => {
-        const p = new THREE.Mesh(ghPillarGeo, pillarMat);
-        p.position.set(x, 1.3, z);
-        guardHouseGrp.add(p);
-        obstacles.push(p);
-    };
-    addGHPillar(-1.0, -1.0); // Front-Left
-    addGHPillar(1.0, -1.0);  // Front-Right
-    addGHPillar(-1.0, 1.0);  // Back-Left
-    addGHPillar(1.0, 1.0);   // Back-Right
-    // Roof (Blue painted metal)
-    const ghRoofMat = new THREE.MeshStandardMaterial({color: 0x2c3e50, roughness: 0.8});
-    const ghRoof = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.2, 2.4), ghRoofMat);
-    ghRoof.position.y = 2.6;
-    guardHouseGrp.add(ghRoof);
-    // Windows (Jalousie - Matching Classroom Windows)
-    const ghGlassMat = new THREE.MeshStandardMaterial({color: 0xa8d9b8, transparent: true, opacity: 0.6, metalness: 0.8, roughness: 0.1});
-    const ghFrameMat = new THREE.MeshStandardMaterial({ color: 0x4e8771 });
-
-    // Front Window (along X axis)
-    const ghWin1 = new THREE.Group();
-    const slatGeoX = new THREE.BoxGeometry(1.6, 0.12, 0.02);
-    for (let y = 0.05; y < 1.0; y += 0.1) {
-        const slat = new THREE.Mesh(slatGeoX, ghGlassMat);
-        slat.position.y = y - 0.5;
-        slat.rotation.x = -0.4;
-        ghWin1.add(slat);
-    }
-    const frameV1 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.0, 0.1), ghFrameMat);
-    frameV1.position.set(-0.8, 0, 0); ghWin1.add(frameV1);
-    const frameV2 = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.0, 0.1), ghFrameMat);
-    frameV2.position.set(0.8, 0, 0); ghWin1.add(frameV2);
-    ghWin1.position.set(0, 1.5, -1.01);
-    guardHouseGrp.add(ghWin1);
-
-    // Side Windows (along Z axis)
-    const slatGeoZ = new THREE.BoxGeometry(0.02, 0.12, 1.6);
-    const createSideWin = () => {
-        const win = new THREE.Group();
-        for (let y = 0.05; y < 1.0; y += 0.1) {
-            const slat = new THREE.Mesh(slatGeoZ, ghGlassMat);
-            slat.position.y = y - 0.5;
-            slat.rotation.z = 0.4;
-            win.add(slat);
-        }
-        const f1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 0.05), ghFrameMat);
-        f1.position.set(0, 0, -0.8); win.add(f1);
-        const f2 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 0.05), ghFrameMat);
-        f2.position.set(0, 0, 0.8); win.add(f2);
-        return win;
-    };
-    
-    const ghWin2 = createSideWin();
-    ghWin2.position.set(1.01, 1.5, 0);
-    guardHouseGrp.add(ghWin2);
-    
-    const ghWin3 = createSideWin();
-    ghWin3.position.set(-1.01, 1.5, 0);
-    guardHouseGrp.add(ghWin3);
-
-    // Guard House Door (Panel Door, Interactive)
-    const ghDoorGroup = new THREE.Group();
-    ghDoorGroup.position.set(0.4, 0, 1.01); // Hinge at right side of the door opening
-    ghDoorGroup.userData = { isOpen: false, openType: 'rotate', openRot: Math.PI / 2, closeRot: 0 };
-    
-    const ghDoorMat = new THREE.MeshStandardMaterial({color: 0x9dc359});
-    const ghDoorMesh = createPanelDoor(0.8, 2.0, 0.1, ghDoorMat, 'right');
-    ghDoorMesh.rotation.y = Math.PI / 2; // Rotate to span along X axis
-    ghDoorMesh.position.set(-0.4, 1.0, 0); // Offset from hinge
-    ghDoorGroup.add(ghDoorMesh);
-    
-    guardHouseGrp.add(ghDoorGroup);
-    doorMeshes.push(ghDoorGroup);
-    
-    // Position the Guard House so its front is flush with the fence (z=-19.25). 
-    // Depth is 2.0, so center z = -18.25
-    guardHouseGrp.position.set(1.75, 0, -18.25);
-    scene.add(guardHouseGrp);
-
-    // 2. Walk-through Metal Detector
-    const mdGrp = new THREE.Group();
-    const mdMat = new THREE.MeshStandardMaterial({color: 0xbdc3c7, metalness: 0.7, roughness: 0.3});
-    // Left pillar
-    const mdLeft = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.2, 0.6), mdMat);
-    mdLeft.position.set(-0.5, 1.1, 0);
-    mdGrp.add(mdLeft);
-    // Right pillar
-    const mdRight = new THREE.Mesh(new THREE.BoxGeometry(0.2, 2.2, 0.6), mdMat);
-    mdRight.position.set(0.5, 1.1, 0);
-    mdGrp.add(mdRight);
-    // Top bar
-    const mdTop = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.2, 0.6), mdMat);
-    mdTop.position.set(0, 2.3, 0);
-    mdGrp.add(mdTop);
-    // LED Indicators (Red/Green)
-    const mdLightMat = new THREE.MeshStandardMaterial({color: 0x00ff00, emissive: 0x00ff00});
-    const mdLight = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.61), mdLightMat);
-    mdLight.position.set(-0.5, 2.0, 0);
-    mdGrp.add(mdLight);
-    
-    // Place metal detector just inside the small pedestrian gate (center x=3.5)
-    mdGrp.position.set(3.5, 0, -17.5);
-    scene.add(mdGrp);
-    // Note: No obstacle added so the player can actually walk THROUGH the detector!
-
-    // Back Fence
-    const fenceBack = new THREE.Mesh(new THREE.BoxGeometry(pathWidth, 2.5, 0.2), fenceMat);
-    fenceBack.position.set(0, 1.25, pathLength / 2);
-    scene.add(fenceBack);
-    obstacles.push(fenceBack);
 
     // Roof & Ceiling Group
     const roofGroup = new THREE.Group();
     scene.add(roofGroup);
+    const roofCenterOffsetX = 0;
+    roofGroup.position.x = roofCenterOffsetX;
+    roofGroup.visible = false;
     window.roofGroup = roofGroup; // Expose for toggling
 
     // Ceiling
@@ -561,7 +369,7 @@ function buildClassroom() {
     const overhangDrop = (overhang - 0.2) * Math.tan(roofAngle);
     const waveAmplitude = 0.025;
     // Lift the roof by waveAmplitude + 0.01 so the lowest point of the waves clears the walls
-    const roofCenterY = CLASS_HEIGHT + (ridgeHeightFromWall - overhangDrop) / 2 + waveAmplitude + 0.01;
+    const roofCenterY = CLASS_HEIGHT + (ridgeHeightFromWall - overhangDrop) / 2 + waveAmplitude + 0.44;
 
     // Create physical corrugated geometry
     const roofLength = CLASS_LENGTH + overhang * 2;
@@ -580,13 +388,25 @@ function buildClassroom() {
 
     // Left Roof Panel
     const leftRoof = new THREE.Mesh(corrugatedGeo, roofMat);
-    leftRoof.position.set(-roofHalfSpan / 2, roofCenterY, 0);
+    leftRoof.position.set(-roofHalfSpan / 2, roofCenterY + 0.12, 0);
     leftRoof.rotation.z = roofAngle;
     roofGroup.add(leftRoof);
 
     // Right Roof Panel
-    const rightRoof = new THREE.Mesh(corrugatedGeo, roofMat);
-    rightRoof.position.set(roofHalfSpan / 2, roofCenterY, 0);
+    const mainRightRoofSpan = CLASS_WIDTH / 2 + 2.5;
+    const mainRightRoofWidth = mainRightRoofSpan / Math.cos(roofAngle);
+    const mainRightRoofGeo = new THREE.PlaneGeometry(mainRightRoofWidth, roofLength, 1, 600);
+    mainRightRoofGeo.rotateX(-Math.PI / 2);
+    const mainRightRoofPos = mainRightRoofGeo.attributes.position;
+    for (let i = 0; i < mainRightRoofPos.count; i++) {
+        const z = mainRightRoofPos.getZ(i);
+        const wave = Math.sin((z / roofLength) * Math.PI * 2 * ridges);
+        mainRightRoofPos.setY(i, wave * waveAmplitude);
+    }
+    mainRightRoofGeo.computeVertexNormals();
+    const rightRoof = new THREE.Mesh(mainRightRoofGeo, roofMat);
+    const mainRightRoofCenterY = roofCenterY + 0.35 - (mainRightRoofSpan - roofHalfSpan) * Math.sin(roofAngle);
+    rightRoof.position.set(mainRightRoofSpan / 2, mainRightRoofCenterY, 0);
     rightRoof.rotation.z = -roofAngle;
     roofGroup.add(rightRoof);
 
@@ -595,28 +415,31 @@ function buildClassroom() {
 
     // Ridge Roll (Metal cap to cover the gap at the peak of the roof)
     const ridgePeakY = roofCenterY + (roofPanelWidth / 2) * Math.sin(roofAngle) + waveAmplitude;
-    // Make it slightly shorter than roofLength so it stays hidden behind the fascia boards
-    const ridgeRollGeo = new THREE.CylinderGeometry(0.11, 0.11, roofLength - 0.15, 8);
-    ridgeRollGeo.rotateX(Math.PI / 2); // Lay flat along the Z axis
-    const ridgeRoll = new THREE.Mesh(ridgeRollGeo, fasciaMat);
-    ridgeRoll.position.set(0, ridgePeakY - 0.02, 0);
-    roofGroup.add(ridgeRoll);
-
     // Side Gutters (Left and Right eaves)
     // Positioned at the exact lowest edge of the tilted roof panels
     const eaveY = roofCenterY - (roofPanelWidth / 2) * Math.sin(roofAngle);
-    const gutterGeo = new THREE.BoxGeometry(0.15, 0.25, roofLength + 0.15); // +0.15 exactly matches the front/back fascia depths
+    // Attach the corridor canopy directly below the main roof eave.
+    const corridorCanopyGeo = new THREE.PlaneGeometry(3.8, roofLength, 1, 600);
+    corridorCanopyGeo.rotateX(-Math.PI / 2);
+    const corridorCanopyPos = corridorCanopyGeo.attributes.position;
+    for (let i = 0; i < corridorCanopyPos.count; i++) {
+        const z = corridorCanopyPos.getZ(i);
+        const wave = Math.sin((z / roofLength) * Math.PI * 2 * ridges);
+        corridorCanopyPos.setY(i, wave * waveAmplitude);
+    }
+    corridorCanopyGeo.computeVertexNormals();
+    corridorCanopy.geometry.dispose();
+    corridorCanopy.geometry = corridorCanopyGeo;
+    corridorCanopy.material = roofMat;
+    corridorCanopy.position.y = eaveY - 0.12;
+    corridorCanopy.visible = false;
 
-    // Positioned so the outer face is exactly at +/- (roofHalfSpan + 0.15)
-    const leftGutterX = -roofHalfSpan - 0.075;
-    const leftGutter = new THREE.Mesh(gutterGeo, fasciaMat);
-    leftGutter.position.set(leftGutterX, eaveY, 0);
-    roofGroup.add(leftGutter);
-
-    const rightGutterX = roofHalfSpan + 0.075;
-    const rightGutter = new THREE.Mesh(gutterGeo, fasciaMat);
-    rightGutter.position.set(rightGutterX, eaveY, 0);
-    roofGroup.add(rightGutter);
+    // With the roof removed, corridor posts align exactly with the classroom wall height.
+    const corridorPostHeight = CLASS_HEIGHT;
+    corridorPosts.forEach((post) => {
+        post.scale.y = corridorPostHeight / CLASS_HEIGHT;
+        post.position.y = corridorPostHeight / 2;
+    });
 
     // Front and Back Sloped Fascia Boards (Custom Shape to prevent overlapping at the peak)
     const peakY = roofCenterY + (roofPanelWidth / 2) * Math.sin(roofAngle);
@@ -624,36 +447,194 @@ function buildClassroom() {
     const fwShape = new THREE.Shape();
     // Trace the inverted V shape of the roof
     fwShape.moveTo(0, peakY + 0.12); // Top peak (Taller to cover the ridge roll)
-    fwShape.lineTo(roofHalfSpan + 0.15, eaveY + 0.125); // Top right eave
-    fwShape.lineTo(roofHalfSpan + 0.15, eaveY - 0.125); // Bottom right eave
+    fwShape.lineTo(roofHalfSpan + 0.03, eaveY + 0.125); // Top right eave
+    fwShape.lineTo(roofHalfSpan + 0.03, eaveY - 0.125); // Bottom right eave
     fwShape.lineTo(0, peakY - 0.18); // Bottom peak
-    fwShape.lineTo(-roofHalfSpan - 0.15, eaveY - 0.125); // Bottom left eave
-    fwShape.lineTo(-roofHalfSpan - 0.15, eaveY + 0.125); // Top left eave
+    fwShape.lineTo(-roofHalfSpan - 0.03, eaveY - 0.125); // Bottom left eave
+    fwShape.lineTo(-roofHalfSpan - 0.03, eaveY + 0.125); // Top left eave
     fwShape.lineTo(0, peakY + 0.12); // Close shape
 
     const fwExtrudeSettings = { depth: 0.15, bevelEnabled: false };
     const fwGeo = new THREE.ExtrudeGeometry(fwShape, fwExtrudeSettings);
 
-    const frontFascia = new THREE.Mesh(fwGeo, fasciaMat);
-    // Position front face at roof edge. Extrude goes +Z.
-    frontFascia.position.set(0, 0, roofLength / 2 - 0.075);
-    roofGroup.add(frontFascia);
-
-    const backFascia = new THREE.Mesh(fwGeo, fasciaMat);
-    backFascia.position.set(0, 0, -roofLength / 2 - 0.075);
-    roofGroup.add(backFascia);
-
     // Front and Back Pediments (Triangles closing the roof ends)
     const pedimentShape = new THREE.Shape();
-    pedimentShape.moveTo(-outerPillarX, 0);
+    const gableHalfSpan = roofHalfSpan - 0.05;
+    pedimentShape.moveTo(-gableHalfSpan, 0);
     // Keep the pediment slightly lower than the lowest trough of the corrugated roof
     // so it NEVER pokes through the waves. The roof overhang hides any small gap.
-    pedimentShape.lineTo(0, ridgeHeightFromWall);
-    pedimentShape.lineTo(outerPillarX, 0);
-    pedimentShape.lineTo(-outerPillarX, 0);
+    // Extend the wall gable upward to meet the fixed roof underside and close the gap.
+    const wallGablePeak = roofCenterY + (roofPanelWidth / 2) * Math.sin(roofAngle) - CLASS_HEIGHT - 0.03;
+    pedimentShape.lineTo(0, wallGablePeak);
+    pedimentShape.lineTo(gableHalfSpan, 0);
+    pedimentShape.lineTo(-gableHalfSpan, 0);
 
     // We haven't defined wallMat yet, so we define it here, and remove it from below
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0xeedcb0, roughness: 0.8 }); // Distinct DepEd Cream/Beige
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xeedcb0, roughness: 0.8 });
+
+    // Small attached rooms at both ends, each one-third of a classroom length.
+    const endRoomLength = SINGLE_ROOM_LENGTH / 3;
+    const endRoomCenters = [-CLASS_LENGTH / 2 - endRoomLength / 2, CLASS_LENGTH / 2 + endRoomLength / 2];
+    const addedRoomPosts = [];
+    const addedRoomBeams = [];
+    endRoomCenters.forEach((z) => {
+        const endWall = new THREE.Mesh(new THREE.BoxGeometry(CLASS_WIDTH, CLASS_HEIGHT, 0.18), wallMat);
+        endWall.position.set(0, CLASS_HEIGHT / 2, z + (z < 0 ? -endRoomLength / 2 : endRoomLength / 2));
+        scene.add(endWall);
+
+        const endGableHalfSpan = z < 0 ? corridorOuterX - 0.4 : corridorOuterX + 0.2;
+        const endGableShape = new THREE.Shape();
+        endGableShape.moveTo(-CLASS_WIDTH / 2 - 0.15, 0);
+        endGableShape.lineTo(0, ridgeHeightFromWall - 0.05);
+        endGableShape.lineTo(endGableHalfSpan, 0);
+        endGableShape.lineTo(-CLASS_WIDTH / 2 - 0.15, 0);
+        const endGable = new THREE.Mesh(
+            new THREE.ExtrudeGeometry(endGableShape, { depth: 0.2, bevelEnabled: false }),
+            wallMat
+        );
+        endGable.position.set(0, CLASS_HEIGHT, z + (z < 0 ? -endRoomLength / 2 : endRoomLength / 2));
+        scene.add(endGable);
+
+        const packageRoomFloor = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.08, endRoomLength), corridorMat);
+        packageRoomFloor.position.set(corridorCenterX, 0.04, z);
+        packageRoomFloor.receiveShadow = true;
+        scene.add(packageRoomFloor);
+
+        [-1, 1].forEach((side) => {
+            if (side === 1) return; // Keep the door-side corridor open.
+            const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.18, CLASS_HEIGHT, endRoomLength), wallMat);
+            sideWall.position.set(side * (CLASS_WIDTH / 2 - 0.09), CLASS_HEIGHT / 2, z);
+            scene.add(sideWall);
+        });
+
+        [-1, 1].forEach((xSide) => {
+            [-1, 1].forEach((zSide) => {
+                const post = new THREE.Mesh(new THREE.BoxGeometry(0.4, CLASS_HEIGHT, 0.4), corridorStructureMat);
+                post.position.set(xSide * (CLASS_WIDTH / 2), CLASS_HEIGHT / 2, z + zSide * (endRoomLength / 2));
+                scene.add(post);
+                addedRoomPosts.push(post);
+            });
+        });
+
+        [-1, 1].forEach((zSide) => {
+            const beam = new THREE.Mesh(new THREE.BoxGeometry(CLASS_WIDTH, 0.4, 0.4), corridorStructureMat);
+            beam.position.set(0, CLASS_HEIGHT - 0.2, z + zSide * (endRoomLength / 2));
+            scene.add(beam);
+            addedRoomBeams.push(beam);
+
+            const fullFrontBeam = new THREE.Mesh(
+                new THREE.BoxGeometry(corridorOuterX + CLASS_WIDTH / 2, 0.4, 0.4),
+                corridorStructureMat
+            );
+            fullFrontBeam.position.set((corridorOuterX - CLASS_WIDTH / 2) / 2, CLASS_HEIGHT - 0.2, z + zSide * (endRoomLength / 2));
+            scene.add(fullFrontBeam);
+            addedRoomBeams.push(fullFrontBeam);
+
+        });
+
+        [-1, 1].forEach((xSide) => {
+            const beam = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, endRoomLength), corridorStructureMat);
+            beam.position.set(xSide * (CLASS_WIDTH / 2), CLASS_HEIGHT - 0.2, z);
+            scene.add(beam);
+            addedRoomBeams.push(beam);
+        });
+
+        // Matching frame on the package/corridor-side extension.
+        [-1, 1].forEach((xSide) => {
+            [-1, 1].forEach((zSide) => {
+                const packagePost = new THREE.Mesh(new THREE.BoxGeometry(0.4, CLASS_HEIGHT, 0.4), corridorStructureMat);
+                packagePost.position.set(corridorCenterX + xSide * 1.1, CLASS_HEIGHT / 2, z + zSide * (endRoomLength / 2));
+                scene.add(packagePost);
+                addedRoomPosts.push(packagePost);
+            });
+        });
+
+        [-1, 1].forEach((zSide) => {
+            const packageBeam = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.4, 0.4), corridorStructureMat);
+            packageBeam.position.set(corridorCenterX, CLASS_HEIGHT - 0.2, z + zSide * (endRoomLength / 2));
+            scene.add(packageBeam);
+            addedRoomBeams.push(packageBeam);
+        });
+
+        const endRoomRailing = new THREE.Mesh(
+            new THREE.BoxGeometry(0.14, 0.95, endRoomLength),
+            corridorRailMat
+        );
+        endRoomRailing.position.set(corridorOuterX, 0.48, z);
+        scene.add(endRoomRailing);
+
+        const endRoomTopRail = new THREE.Mesh(
+            new THREE.BoxGeometry(0.18, 0.12, endRoomLength),
+            corridorStructureMat
+        );
+        endRoomTopRail.position.set(corridorOuterX, 1.02, z);
+        scene.add(endRoomTopRail);
+
+        const endGreenTube = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.06, 0.06, endRoomLength, 16),
+            greenTubeMat
+        );
+        endGreenTube.rotation.x = Math.PI / 2;
+        endGreenTube.position.set(corridorOuterX, 1.32, z);
+        endGreenTube.castShadow = true;
+        scene.add(endGreenTube);
+
+        const endRoomUpperPost = new THREE.Mesh(
+            new THREE.BoxGeometry(0.4, 0.4, endRoomLength),
+            corridorStructureMat
+        );
+        endRoomUpperPost.position.set(corridorOuterX, CLASS_HEIGHT - 0.2, z);
+        endRoomUpperPost.castShadow = true;
+        scene.add(endRoomUpperPost);
+        addedRoomBeams.push(endRoomUpperPost);
+
+        [0.25, 0.5, 0.75].forEach((ratio) => {
+            const endGreenUpright = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.07, 0.07, 0.42, 16),
+                greenTubeMat
+            );
+            endGreenUpright.position.set(corridorOuterX, 1.14, z - endRoomLength / 2 + endRoomLength * ratio);
+            endGreenUpright.castShadow = true;
+            scene.add(endGreenUpright);
+        });
+
+        const endZ = z + (z < 0 ? -endRoomLength / 2 : endRoomLength / 2);
+        const endSideRailing = new THREE.Mesh(
+            new THREE.BoxGeometry(2.2, 0.95, 0.14),
+            corridorRailMat
+        );
+        endSideRailing.position.set(corridorCenterX, 0.48, endZ);
+        scene.add(endSideRailing);
+
+        const endSideTopRail = new THREE.Mesh(
+            new THREE.BoxGeometry(2.2, 0.12, 0.18),
+            corridorStructureMat
+        );
+        endSideTopRail.position.set(corridorCenterX, 1.02, endZ);
+        scene.add(endSideTopRail);
+
+        const endSideGreenTube = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.06, 0.06, 2.2, 16),
+            greenTubeMat
+        );
+        endSideGreenTube.rotation.z = Math.PI / 2;
+        endSideGreenTube.position.set(corridorCenterX, 1.32, endZ);
+        endSideGreenTube.castShadow = true;
+        scene.add(endSideGreenTube);
+
+        const endSideGreenUpright = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.07, 0.07, 0.42, 16),
+            greenTubeMat
+        );
+        endSideGreenUpright.position.set(corridorCenterX, 1.14, endZ);
+        endSideGreenUpright.castShadow = true;
+        scene.add(endSideGreenUpright);
+    });
+
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0xa8d9b8, transparent: true, opacity: 0.6, roughness: 0.1, metalness: 0.8 });
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x4e8771 });
+    const doorMeshMat = new THREE.MeshStandardMaterial({ color: 0x9dc359 });
+
     const pedimentMat = new THREE.MeshStandardMaterial({ color: 0xeedcb0, roughness: 0.8, side: THREE.DoubleSide });
 
     const extrudeSettings = { depth: 0.2, bevelEnabled: false };
@@ -661,115 +642,192 @@ function buildClassroom() {
 
     const frontPediment = new THREE.Mesh(pedimentGeo, pedimentMat);
     // Extrude goes +Z. Front wall occupies [CLASS_LENGTH/2 - 0.1, CLASS_LENGTH/2 + 0.1]. Place at -0.1 to match.
-    frontPediment.position.set(0, CLASS_HEIGHT, CLASS_LENGTH / 2 - 0.1);
+    frontPediment.position.set(roofCenterOffsetX, CLASS_HEIGHT, CLASS_LENGTH / 2 - 0.1);
     scene.add(frontPediment); // Add to scene, not roofGroup, so it stays when roof is hidden
     obstacles.push(frontPediment);
+    frontPediment.visible = false;
 
     const backPediment = new THREE.Mesh(pedimentGeo, pedimentMat);
     // Back wall occupies [-CLASS_LENGTH/2 - 0.1, -CLASS_LENGTH/2 + 0.1]. Place at -0.1 to match.
-    backPediment.position.set(0, CLASS_HEIGHT, -CLASS_LENGTH / 2 - 0.1);
+    backPediment.position.set(roofCenterOffsetX, CLASS_HEIGHT, -CLASS_LENGTH / 2 - 0.1);
     scene.add(backPediment);
     obstacles.push(backPediment);
+    backPediment.visible = false;
+
+    // Roof removed from the scene as requested; keep the editable code definitions intact.
+    roofGroup.visible = false;
+    scene.remove(roofGroup);
+    corridorCanopy.visible = false;
+
+    // New roof based on the current room + additional-room footprint.
+    const newRoofGroup = new THREE.Group();
+    const roofTextureCanvas = document.createElement('canvas');
+    roofTextureCanvas.width = 128;
+    roofTextureCanvas.height = 128;
+    const roofTextureCtx = roofTextureCanvas.getContext('2d');
+    roofTextureCtx.fillStyle = '#2f6f2f';
+    roofTextureCtx.fillRect(0, 0, 128, 128);
+    for (let x = 0; x < 128; x += 8) {
+        roofTextureCtx.fillStyle = '#1f5425';
+        roofTextureCtx.fillRect(x, 0, 3, 128);
+        roofTextureCtx.fillStyle = '#4b9144';
+        roofTextureCtx.fillRect(x + 3, 0, 2, 128);
+    }
+    const newRoofTexture = new THREE.CanvasTexture(roofTextureCanvas);
+    newRoofTexture.wrapS = THREE.RepeatWrapping;
+    newRoofTexture.wrapT = THREE.RepeatWrapping;
+    newRoofTexture.repeat.set(18, 1);
+    const newRoofMat = new THREE.MeshStandardMaterial({ color: 0x9dc359, roughness: 0.82, metalness: 0.05, side: THREE.DoubleSide });
+    const gutterMat = new THREE.MeshStandardMaterial({ color: 0xb8bcc0, roughness: 0.38, metalness: 0.75, side: THREE.DoubleSide });
+    const newRoofAngle = 18 * Math.PI / 180;
+    const newRoofCenterX = 0;
+    const newRoofLeftSpan = CLASS_WIDTH / 2 + 0.35;
+    const newRoofRightSpan = corridorOuterX + 0.35;
+    const newRoofLength = CLASS_LENGTH + (SINGLE_ROOM_LENGTH * 2 / 3) + 0.8;
+    const newRoofEaveY = CLASS_HEIGHT - 0.04;
+    const newRoofRidgeY = newRoofEaveY + newRoofLeftSpan * Math.tan(newRoofAngle);
+    const newRoofLeftWidth = newRoofLeftSpan / Math.cos(newRoofAngle);
+    const newRoofRightAngle = Math.atan((newRoofRidgeY - newRoofEaveY) / newRoofRightSpan);
+    const newRoofRightWidth = newRoofRightSpan / Math.cos(newRoofRightAngle);
+
+    const createCorrugatedRoofPanel = (width, length) => {
+        const geometry = new THREE.PlaneGeometry(width, length, 1, 3240);
+        geometry.rotateX(-Math.PI / 2);
+        const positions = geometry.attributes.position;
+        const ridges = 540;
+        const amplitude = 0.008;
+        for (let i = 0; i < positions.count; i++) {
+            const z = positions.getZ(i);
+            const t = z / length + 0.5;
+            const edgeFade = Math.sin(Math.PI * t);
+            positions.setY(i, Math.sin((z / length) * Math.PI * 2 * ridges) * amplitude * edgeFade);
+        }
+        geometry.computeVertexNormals();
+        return geometry;
+    };
+
+    const newLeftRoof = new THREE.Mesh(createCorrugatedRoofPanel(newRoofLeftWidth, newRoofLength), newRoofMat);
+    newLeftRoof.rotation.z = newRoofAngle;
+    newLeftRoof.position.set(newRoofCenterX - newRoofLeftSpan / 2, newRoofEaveY + (newRoofLeftSpan * Math.tan(newRoofAngle)) / 2, 0);
+    newRoofGroup.add(newLeftRoof);
+
+    const newRightRoof = new THREE.Mesh(createCorrugatedRoofPanel(newRoofRightWidth, newRoofLength), newRoofMat);
+    newRightRoof.rotation.z = -newRoofRightAngle;
+    newRightRoof.position.set(newRoofCenterX + newRoofRightSpan / 2, newRoofEaveY + (newRoofRightSpan * Math.tan(newRoofRightAngle)) / 2, 0);
+    newRoofGroup.add(newRightRoof);
+
+    // Silver ridge sheet with small bevels so the top edge is softer.
+    const ridgeShape = new THREE.Shape();
+    ridgeShape.moveTo(-0.18, 0.00);
+    ridgeShape.lineTo(-0.14, 0.07);
+    ridgeShape.lineTo(0.14, 0.07);
+    ridgeShape.lineTo(0.18, 0.00);
+    ridgeShape.lineTo(-0.18, 0.00);
+    const ridgeLength = newRoofLength + 0.12;
+    const ridgeGeometry = new THREE.ExtrudeGeometry(ridgeShape, {
+        depth: ridgeLength,
+        bevelEnabled: true,
+        bevelSegments: 2,
+        bevelSize: 0.018,
+        bevelThickness: 0.018,
+        curveSegments: 2
+    });
+    ridgeGeometry.translate(0, 0, -ridgeLength / 2);
+    const ridgeSheet = new THREE.Mesh(ridgeGeometry, gutterMat);
+    ridgeSheet.position.set(newRoofCenterX, newRoofRidgeY + 0.01, 0);
+    newRoofGroup.add(ridgeSheet);
+
+    const createLongGutter = (x) => {
+        const gutter = new THREE.Group();
+        // Let the gutter extend slightly past each roof end for a small eave overhang.
+        const gutterLength = newRoofLength + 0.12;
+        const bottom = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, gutterLength), gutterMat);
+        bottom.position.set(x, newRoofEaveY - 0.16, 0);
+        gutter.add(bottom);
+        [-1, 1].forEach((side) => {
+            const lip = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.26, gutterLength), gutterMat);
+            lip.position.set(x + side * 0.13, newRoofEaveY - 0.04, 0);
+            gutter.add(lip);
+        });
+        [-1, 1].forEach((end) => {
+            const cap = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.16, 0.04), gutterMat);
+            cap.position.set(x, newRoofEaveY - 0.04, end * (gutterLength / 2));
+            gutter.add(cap);
+        });
+        return gutter;
+    };
+    newRoofGroup.add(createLongGutter(newRoofCenterX - newRoofLeftSpan));
+    newRoofGroup.add(createLongGutter(newRoofCenterX + newRoofRightSpan));
+
+    [-1, 1].forEach((endZ) => {
+        const leftEndBarrier = new THREE.Mesh(new THREE.BoxGeometry(newRoofLeftWidth + 0.16, 0.14, 0.12), gutterMat);
+        leftEndBarrier.rotation.z = newRoofAngle;
+        leftEndBarrier.position.set(newRoofCenterX - newRoofLeftSpan / 2, newRoofEaveY + (newRoofLeftSpan * Math.tan(newRoofAngle)) / 2 + 0.06, endZ * newRoofLength / 2);
+        newRoofGroup.add(leftEndBarrier);
+
+        const rightEndBarrier = new THREE.Mesh(new THREE.BoxGeometry(newRoofRightWidth + 0.16, 0.14, 0.12), gutterMat);
+        rightEndBarrier.rotation.z = -newRoofRightAngle;
+        rightEndBarrier.position.set(newRoofCenterX + newRoofRightSpan / 2, newRoofEaveY + (newRoofRightSpan * Math.tan(newRoofRightAngle)) / 2 + 0.06, endZ * newRoofLength / 2);
+        newRoofGroup.add(rightEndBarrier);
+    });
+
+    newLeftRoof.geometry.dispose();
+    newLeftRoof.geometry = new THREE.BoxGeometry(newRoofLeftWidth, 0.16, newRoofLength);
+    newRightRoof.geometry.dispose();
+    newRightRoof.geometry = new THREE.BoxGeometry(newRoofRightWidth, 0.16, newRoofLength);
+    newLeftRoof.visible = true;
+    newRightRoof.visible = true;
+    const flatRoof = new THREE.Mesh(
+        new THREE.BoxGeometry(CLASS_WIDTH / 2 + corridorOuterX + 0.7, 0.16, newRoofLength),
+        newRoofMat
+    );
+    flatRoof.position.set(newRoofCenterX, CLASS_HEIGHT + 0.08, 0);
+    flatRoof.castShadow = true;
+    flatRoof.receiveShadow = true;
+    flatRoof.visible = false;
+    newRoofGroup.add(flatRoof);
+
+    scene.add(newRoofGroup);
+
+    // Interior ceiling covering the classrooms and the full corridor.
+    const interiorCeilingMat = new THREE.MeshBasicMaterial({
+        color: 0x554f3f,
+        side: THREE.DoubleSide
+    });
+    const interiorCeilingWidth = corridorOuterX + CLASS_WIDTH / 2;
+    const interiorCeiling = new THREE.Mesh(
+        new THREE.BoxGeometry(interiorCeilingWidth, 0.08, newRoofLength - 0.12),
+        interiorCeilingMat
+    );
+    interiorCeiling.position.set(
+        (corridorOuterX - CLASS_WIDTH / 2) / 2,
+        CLASS_HEIGHT - 0.12,
+        0
+    );
+    interiorCeiling.castShadow = false;
+    interiorCeiling.receiveShadow = true;
+    scene.add(interiorCeiling);
 
     // Walls (wallMat is now defined above)
 
     // Classroom Structural Pillars
     const columnMat = new THREE.MeshStandardMaterial({ color: 0xf5df9d, roughness: 0.8 }); // S/G QDE DepEd YELLOW RAIN
+    corridorPosts.forEach((post) => {
+        post.material = columnMat;
+    });
+    corridorUpperHorizontalPost.material = columnMat;
+    addedRoomPosts.forEach((post) => {
+        post.material = columnMat;
+    });
+    addedRoomBeams.forEach((beam) => {
+        beam.material = columnMat;
+    });
 
     // Back Wall (Teacher side)
     const backWall = new THREE.Mesh(new THREE.BoxGeometry(CLASS_WIDTH + 0.4, CLASS_HEIGHT, 0.2), wallMat);
     backWall.position.set(0, CLASS_HEIGHT / 2, -CLASS_LENGTH / 2);
     scene.add(backWall);
     obstacles.push(backWall);
-
-    function createClassPillar(px, pz) {
-        // Pillars are 0.4x0.4 and height matches the wall exactly
-        const p = new THREE.Mesh(new THREE.BoxGeometry(0.4, CLASS_HEIGHT, 0.4), columnMat);
-        p.position.set(px, CLASS_HEIGHT / 2, pz);
-        scene.add(p);
-        obstacles.push(p);
-    }
-
-    // Horizontal Tie Beams (Top of the walls before the roof)
-    const hBeamHeight = 0.4;
-    const hBeamY = CLASS_HEIGHT - hBeamHeight / 2; // Centers the 0.4m beam at the very top of the 3.5m wall
-
-    // Front and Back Horizontal Beams
-    const hBeamFBGeo = new THREE.BoxGeometry(CLASS_WIDTH + 0.4, hBeamHeight, 0.4);
-    const hBeamFront = new THREE.Mesh(hBeamFBGeo, columnMat);
-    hBeamFront.position.set(0, hBeamY, CLASS_LENGTH / 2);
-    scene.add(hBeamFront);
-    obstacles.push(hBeamFront);
-
-    const hBeamBack = new THREE.Mesh(hBeamFBGeo, columnMat);
-    hBeamBack.position.set(0, hBeamY, -CLASS_LENGTH / 2);
-    scene.add(hBeamBack);
-    obstacles.push(hBeamBack);
-
-    // Left and Right Horizontal Beams
-    // Length is CLASS_LENGTH - 0.4 so they don't overlap with the front/back beams at the corners (prevents z-fighting)
-    const hBeamLRGeo = new THREE.BoxGeometry(0.4, hBeamHeight, CLASS_LENGTH - 0.4);
-    const hBeamLeft = new THREE.Mesh(hBeamLRGeo, columnMat);
-    hBeamLeft.position.set(-CLASS_WIDTH / 2, hBeamY, 0);
-    scene.add(hBeamLeft);
-    obstacles.push(hBeamLeft);
-
-    const hBeamRight = new THREE.Mesh(hBeamLRGeo, columnMat);
-    hBeamRight.position.set(CLASS_WIDTH / 2, hBeamY, 0);
-    scene.add(hBeamRight);
-    obstacles.push(hBeamRight);
-
-    // Four Corners
-    createClassPillar(-5, -9);
-    createClassPillar(5, -9);
-    createClassPillar(-5, 9);
-    createClassPillar(5, 9);
-
-    // Left Wall Pillars (x = -5)
-    createClassPillar(-5, -1.5); // Between the two large windows
-
-    // Right Wall Pillars (x = 5)
-    createClassPillar(5, -4.9); // Perfectly symmetric with center pillar and door
-    createClassPillar(5, 0);
-    createClassPillar(5, 4.9);
-
-    // CR Pillars
-    createClassPillar(-2, 6.5); // Outer corner of the CR
-    createClassPillar(-5, 6.5); // Where CR front wall meets the Left Wall
-    createClassPillar(-2, 9);   // Where CR side wall meets the Front Wall
-
-    // Front Wall (Solid again)
-    const frontWall = new THREE.Mesh(new THREE.BoxGeometry(CLASS_WIDTH + 0.4, CLASS_HEIGHT, 0.2), wallMat);
-    frontWall.position.set(0, CLASS_HEIGHT / 2, CLASS_LENGTH / 2);
-    scene.add(frontWall);
-    obstacles.push(frontWall);
-
-    // CR Front Wall (with door hole)
-    const crWallLeft = new THREE.Mesh(new THREE.BoxGeometry(0.9, CLASS_HEIGHT, 0.2), wallMat);
-    crWallLeft.position.set(-4.55, CLASS_HEIGHT / 2, CLASS_LENGTH / 2 - 2.5);
-    crWallLeft.userData = { isWalkObstacle: true };
-    scene.add(crWallLeft);
-    obstacles.push(crWallLeft);
-
-    const crWallRight = new THREE.Mesh(new THREE.BoxGeometry(0.9, CLASS_HEIGHT, 0.2), wallMat);
-    crWallRight.position.set(-2.45, CLASS_HEIGHT / 2, CLASS_LENGTH / 2 - 2.5);
-    crWallRight.userData = { isWalkObstacle: true };
-    scene.add(crWallRight);
-    obstacles.push(crWallRight);
-
-    const crWallTop = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.0, 0.2), wallMat);
-    crWallTop.position.set(-3.5, 3.0, CLASS_LENGTH / 2 - 2.5);
-    crWallTop.userData = { isWalkObstacle: true };
-    scene.add(crWallTop);
-    obstacles.push(crWallTop);
-
-    const crWallSide = new THREE.Mesh(new THREE.BoxGeometry(0.2, CLASS_HEIGHT, 2.5), wallMat);
-    crWallSide.position.set(-2, CLASS_HEIGHT / 2, CLASS_LENGTH / 2 - 1.25);
-    crWallSide.userData = { isWalkObstacle: true };
-    scene.add(crWallSide);
-    obstacles.push(crWallSide);
-
-    const crDoorMat = new THREE.MeshStandardMaterial({ color: 0x9dc359 }); // QDE DepEd TEMPTATION
 
     function createPanelDoor(width, height, thickness, material, handleSide = 'left') {
         const group = new THREE.Group();
@@ -881,8 +939,7 @@ function buildClassroom() {
 
         return group;
     }
-
-    function createPlasticDoor(width, height, thickness, colorHex, handleSide = 'left') {
+function createPlasticDoor(width, height, thickness, colorHex, handleSide = 'left') {
         const group = new THREE.Group();
 
         // Smooth PVC Material
@@ -927,83 +984,7 @@ function buildClassroom() {
 
         return group;
     }
-
-    const crDoorGroup = new THREE.Group();
-    crDoorGroup.position.set(-4.1, 0, CLASS_LENGTH / 2 - 2.5); // Hinge at left edge
-    crDoorGroup.userData = {
-        isOpen: false,
-        openType: 'rotate',
-        openRot: -Math.PI / 2, // Swings inward to the CR
-        closeRot: 0
-    };
-
-    // CR Door is 1.2 wide, rotated to face correctly
-    const crDoorMesh = createPlasticDoor(1.2, 2.5, 0.05, 0x9dc359, 'right'); // QDE DepEd TEMPTATION
-    crDoorMesh.rotation.y = Math.PI / 2;
-    crDoorMesh.position.set(0.6, 1.25, 0); // Offset from hinge
-    crDoorMesh.userData = { isWalkObstacle: true };
-    crDoorGroup.add(crDoorMesh);
-    scene.add(crDoorGroup);
-    obstacles.push(crDoorMesh);
-    doorMeshes.push(crDoorGroup);
-
-    // Left Wall (Windows)
-    // Bottom Wall
-    const leftWallBottom = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.0, CLASS_LENGTH), wallMat);
-    leftWallBottom.position.set(-CLASS_WIDTH / 2, 0.5, 0);
-    scene.add(leftWallBottom);
-    obstacles.push(leftWallBottom);
-
-    // Top Wall (Split for CR high window)
-    // Back part: z = -9 to z = 7.15 (length 16.15)
-    const leftWallTopBack = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.0, 16.15), wallMat);
-    leftWallTopBack.position.set(-CLASS_WIDTH / 2, 3.0, -0.925);
-    scene.add(leftWallTopBack);
-    obstacles.push(leftWallTopBack);
-
-    // Front part: z = 8.35 to z = 9.0 (length 0.65)
-    const leftWallTopFront = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.0, 0.65), wallMat);
-    leftWallTopFront.position.set(-CLASS_WIDTH / 2, 3.0, 8.675);
-    scene.add(leftWallTopFront);
-    obstacles.push(leftWallTopFront);
-
-    // Above CR Window
-    const leftWallTopAboveCR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 1.2), wallMat);
-    leftWallTopAboveCR.position.set(-CLASS_WIDTH / 2, 3.4, 7.75);
-    scene.add(leftWallTopAboveCR);
-    obstacles.push(leftWallTopAboveCR);
-
-    // Below CR Window
-    const leftWallTopBelowCR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 1.2), wallMat);
-    leftWallTopBelowCR.position.set(-CLASS_WIDTH / 2, 2.6, 7.75);
-    scene.add(leftWallTopBelowCR);
-    obstacles.push(leftWallTopBelowCR);
-
-    // Solid Wall Segments (Front, Middle, Back)
-    // Wall near Blackboard (-Z)
-    const leftWallBoardSide = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 1.5), wallMat);
-    leftWallBoardSide.position.set(-CLASS_WIDTH / 2, 1.75, -8.25); // spans -9 to -7.5
-    scene.add(leftWallBoardSide);
-    obstacles.push(leftWallBoardSide);
-
-    // Middle Wall
-    const leftWallMid = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 4.0), wallMat);
-    leftWallMid.position.set(-CLASS_WIDTH / 2, 1.75, -1.5); // spans -3.5 to 0.5
-    scene.add(leftWallMid);
-    obstacles.push(leftWallMid);
-
-    // Wall near CR (+Z)
-    const leftWallCRSide = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 4.5), wallMat);
-    leftWallCRSide.position.set(-CLASS_WIDTH / 2, 1.75, 6.75); // spans 4.5 to 9
-    scene.add(leftWallCRSide);
-    obstacles.push(leftWallCRSide);
-
-    const glassMat = new THREE.MeshStandardMaterial({
-        color: 0xa8d9b8, transparent: true, opacity: 0.6, roughness: 0.1, metalness: 0.8 // Green tinted glass
-    });
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x4e8771 }); // Palmyra Green Frame
-
-    function createJalousieWindow(zCenter, width = 4, wallX = -CLASS_WIDTH / 2) {
+function createJalousieWindow(zCenter, width = 4, wallX = -CLASS_WIDTH / 2) {
         const group = new THREE.Group();
         group.position.set(wallX, 1.0, zCenter);
 
@@ -1026,8 +1007,7 @@ function buildClassroom() {
         }
         return group;
     }
-
-    function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 2) {
+function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 2) {
         const group = new THREE.Group();
         group.position.set(wallX, 2.7, zCenter); // Base at y=2.7
 
@@ -1049,162 +1029,302 @@ function buildClassroom() {
         return group;
     }
 
-    // High Ventilation Window for CR
-    const jalousieCRHigh = createSmallJalousieWindow(7.75, 1.2, -CLASS_WIDTH / 2);
-    scene.add(jalousieCRHigh);
-    obstacles.push(jalousieCRHigh);
+    function createClassPillar(px, pz) {
+        // Pillars are 0.4x0.4 and height matches the wall exactly
+        const p = new THREE.Mesh(new THREE.BoxGeometry(0.4, CLASS_HEIGHT, 0.4), columnMat);
+        p.position.set(px, CLASS_HEIGHT / 2, pz);
+        scene.add(p);
+        obstacles.push(p);
+    }
 
-    // Window near Blackboard
-    const jalousieBoard = createJalousieWindow(-5.5, 4, -CLASS_WIDTH / 2);
-    scene.add(jalousieBoard);
-    obstacles.push(jalousieBoard);
+    // Horizontal Tie Beams (Top of the walls before the roof)
+    const hBeamHeight = 0.4;
+    const hBeamY = CLASS_HEIGHT - hBeamHeight / 2; // Centers the 0.4m beam at the very top of the 3.5m wall
 
-    // Window near CR
-    const jalousieCR = createJalousieWindow(2.5, 4, -CLASS_WIDTH / 2);
-    scene.add(jalousieCR);
-    obstacles.push(jalousieCR);
+    // Front and Back Horizontal Beams
+    const hBeamFBGeo = new THREE.BoxGeometry(CLASS_WIDTH + 0.4, hBeamHeight, 0.4);
+    const hBeamFront = new THREE.Mesh(hBeamFBGeo, columnMat);
+    hBeamFront.position.set(0, hBeamY, CLASS_LENGTH / 2);
+    scene.add(hBeamFront);
+    obstacles.push(hBeamFront);
 
-    // Right Wall (Long side) - Two doors
-    const doorWidth = 1.6;
-    const doorHeight = 2.5; // Matches window top (1.0 + 1.5)
-    const topWallHeight = CLASS_HEIGHT - doorHeight;
+    const hBeamBack = new THREE.Mesh(hBeamFBGeo, columnMat);
+    hBeamBack.position.set(0, hBeamY, -CLASS_LENGTH / 2);
+    scene.add(hBeamBack);
+    obstacles.push(hBeamBack);
 
-    // Centers of the doors
-    const door1Z = 6.7;
-    const door2Z = -6.7;
+    // Left and Right Horizontal Beams
+    // Length is CLASS_LENGTH - 0.4 so they don't overlap with the front/back beams at the corners (prevents z-fighting)
+    const hBeamLRGeo = new THREE.BoxGeometry(0.4, hBeamHeight, CLASS_LENGTH - 0.4);
+    const hBeamLeft = new THREE.Mesh(hBeamLRGeo, columnMat);
+    hBeamLeft.position.set(-CLASS_WIDTH / 2, hBeamY, 0);
+    scene.add(hBeamLeft);
+    obstacles.push(hBeamLeft);
 
-    // Wall pieces
-    const rightWallBack = new THREE.Mesh(new THREE.BoxGeometry(0.2, CLASS_HEIGHT, 1.5), wallMat);
-    rightWallBack.position.set(CLASS_WIDTH / 2, CLASS_HEIGHT / 2, -8.25);
-    scene.add(rightWallBack);
-    obstacles.push(rightWallBack);
+    const hBeamRight = new THREE.Mesh(hBeamLRGeo, columnMat);
+    hBeamRight.position.set(CLASS_WIDTH / 2, hBeamY, 0);
+    scene.add(hBeamRight);
+    obstacles.push(hBeamRight);
 
-    // Right Wall Mid (with two square windows)
-    const rightMidBottom = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.0, 11.8), wallMat);
-    rightMidBottom.position.set(CLASS_WIDTH / 2, 0.5, 0);
-    scene.add(rightMidBottom);
-    obstacles.push(rightMidBottom);
+    // Horizontal ties from the classroom wall to the package/corridor posts.
+    const corridorTieBeamGeo = new THREE.BoxGeometry(corridorOuterX - CLASS_WIDTH / 2 - 0.2, hBeamHeight, 0.4);
+    corridorPostPositions.forEach((z) => {
+        const tieBeam = new THREE.Mesh(corridorTieBeamGeo, columnMat);
+        tieBeam.position.set((CLASS_WIDTH / 2 + corridorOuterX - 0.2) / 2, hBeamY, z);
+        scene.add(tieBeam);
+        obstacles.push(tieBeam);
+    });
 
-    const rightMidTop = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.0, 11.8), wallMat);
-    rightMidTop.position.set(CLASS_WIDTH / 2, 3.0, 0);
-    scene.add(rightMidTop);
-    obstacles.push(rightMidTop);
 
-    const rightMidFront = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 1.95), wallMat);
-    rightMidFront.position.set(CLASS_WIDTH / 2, 1.75, 4.925);
-    scene.add(rightMidFront);
-    obstacles.push(rightMidFront);
+    // Four Corners
+    function buildRoom(zCenter, i) {
+        const zDir = (i % 2 === 0) ? 1 : -1;
+        // Structural corner posts: aligned with the actual room corners.
+        const roomHalfLength = SINGLE_ROOM_LENGTH / 2;
+        createClassPillar(-CLASS_WIDTH / 2, zCenter - roomHalfLength);
+        createClassPillar(-CLASS_WIDTH / 2, zCenter + roomHalfLength);
+        createClassPillar(CLASS_WIDTH / 2, zCenter - roomHalfLength);
+        createClassPillar(CLASS_WIDTH / 2, zCenter + roomHalfLength);
 
-    const rightMidCenter = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 1.9), wallMat);
-    rightMidCenter.position.set(CLASS_WIDTH / 2, 1.75, 0);
-    scene.add(rightMidCenter);
-    obstacles.push(rightMidCenter);
+        // Left Wall (No CR, Solid with windows)
+        const leftWallBack = new THREE.Mesh(new THREE.BoxGeometry(0.2, CLASS_HEIGHT, 1.5), wallMat);
+        leftWallBack.position.set(-CLASS_WIDTH / 2, CLASS_HEIGHT / 2, zCenter - zDir * 8.25);
+        scene.add(leftWallBack);
+        obstacles.push(leftWallBack);
 
-    const rightMidBack = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 1.95), wallMat);
-    rightMidBack.position.set(CLASS_WIDTH / 2, 1.75, -4.925);
-    scene.add(rightMidBack);
-    obstacles.push(rightMidBack);
+        const leftWallFront = new THREE.Mesh(new THREE.BoxGeometry(0.2, CLASS_HEIGHT, 1.5), wallMat);
+        leftWallFront.position.set(-CLASS_WIDTH / 2, CLASS_HEIGHT / 2, zCenter + zDir * 8.25);
+        scene.add(leftWallFront);
+        obstacles.push(leftWallFront);
 
-    // Large Jalousie Windows (Slightly shifted to perfectly center between pillars)
-    const largeWindow1 = createJalousieWindow(2.45, 3.0, CLASS_WIDTH / 2);
-    scene.add(largeWindow1);
-    obstacles.push(largeWindow1);
+        const leftMidBottom = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.0, 15.0), wallMat);
+        leftMidBottom.position.set(-CLASS_WIDTH / 2, 0.5, zCenter);
+        scene.add(leftMidBottom);
+        obstacles.push(leftMidBottom);
 
-    const largeWindow2 = createJalousieWindow(-2.45, 3.0, CLASS_WIDTH / 2);
-    scene.add(largeWindow2);
-    obstacles.push(largeWindow2);
+        const leftMidTop = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.0, 15.0), wallMat);
+        leftMidTop.position.set(-CLASS_WIDTH / 2, 3.0, zCenter);
+        scene.add(leftMidTop);
+        obstacles.push(leftMidTop);
 
-    const rightWallFront = new THREE.Mesh(new THREE.BoxGeometry(0.2, CLASS_HEIGHT, 1.5), wallMat);
-    rightWallFront.position.set(CLASS_WIDTH / 2, CLASS_HEIGHT / 2, 8.25);
-    scene.add(rightWallFront);
-    obstacles.push(rightWallFront);
+        const leftMidCenter = new THREE.Mesh(new THREE.BoxGeometry(0.2, CLASS_HEIGHT, 2.8), wallMat);
+        leftMidCenter.position.set(-CLASS_WIDTH / 2, 1.75, zCenter);
+        scene.add(leftMidCenter);
+        obstacles.push(leftMidCenter);
+        
+        // Exactly three evenly spaced windows on the wall opposite the doors.
+        const windowPositions = [-WINDOW_OFFSET, WINDOW_OFFSET];
+        windowPositions.forEach((offset, index) => {
+            const window = createJalousieWindow(zCenter + zDir * offset, WINDOW_WIDTH, -CLASS_WIDTH / 2);
+            window.name = `classroomWindow${index + 1}`;
+            scene.add(window);
+            obstacles.push(window);
+        });
 
-    // Top pieces above doors
-    const rightWallTop1 = new THREE.Mesh(new THREE.BoxGeometry(0.2, topWallHeight, doorWidth), wallMat);
-    rightWallTop1.position.set(CLASS_WIDTH / 2, CLASS_HEIGHT - topWallHeight / 2, door1Z);
-    scene.add(rightWallTop1);
-    obstacles.push(rightWallTop1);
+        // Fully close the wall sections that do not contain windows.
+        [-6.9, 6.9].forEach((offset) => {
+            const wallFill = new THREE.Mesh(new THREE.BoxGeometry(0.2, CLASS_HEIGHT, 4.2), wallMat);
+            wallFill.position.set(-CLASS_WIDTH / 2, 1.75, zCenter + zDir * offset);
+            scene.add(wallFill);
+            obstacles.push(wallFill);
+        });
+        
+        // Left Wall
+        const leftWallBottom = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.0, SINGLE_ROOM_LENGTH), wallMat);
+        leftWallBottom.position.set(-CLASS_WIDTH / 2, 0.5, zCenter);
+        scene.add(leftWallBottom);
+        obstacles.push(leftWallBottom);
 
-    const rightWallTop2 = new THREE.Mesh(new THREE.BoxGeometry(0.2, topWallHeight, doorWidth), wallMat);
-    rightWallTop2.position.set(CLASS_WIDTH / 2, CLASS_HEIGHT - topWallHeight / 2, door2Z);
-    scene.add(rightWallTop2);
-    obstacles.push(rightWallTop2);
+        const leftWallTopBack = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.0, 16.15), wallMat);
+        leftWallTopBack.position.set(-CLASS_WIDTH / 2, 3.0, zCenter - zDir * 0.925);
+        scene.add(leftWallTopBack);
+        obstacles.push(leftWallTopBack);
 
-    // Interactive Doors
-    const doorMeshMat = new THREE.MeshStandardMaterial({ color: 0x9dc359 }); // QDE DepEd TEMPTATION
-    const doorGeo = new THREE.BoxGeometry(0.1, doorHeight, doorWidth);
+        const leftWallTopFront = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.0, 0.65), wallMat);
+        leftWallTopFront.position.set(-CLASS_WIDTH / 2, 3.0, zCenter + zDir * 8.675);
+        scene.add(leftWallTopFront);
+        obstacles.push(leftWallTopFront);
 
-    // Door 1 (Front)
-    const doorGroup1 = new THREE.Group();
-    doorGroup1.position.set(CLASS_WIDTH / 2, 0, door1Z + doorWidth / 2); // Hinge towards front wall
-    doorGroup1.userData = {
-        isOpen: false,
-        openType: 'rotate',
-        openRot: Math.PI / 2, // Swings outwards to corridor
-        closeRot: 0
-    };
-    const dMesh1 = createPanelDoor(doorWidth, doorHeight, 0.05, doorMeshMat, 'left');
-    dMesh1.position.set(0, doorHeight / 2, -doorWidth / 2); // Offset from hinge
-    doorGroup1.add(dMesh1);
-    scene.add(doorGroup1);
-    doorMeshes.push(doorGroup1);
-    obstacles.push(dMesh1);
+        const leftWallBoardSide = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 1.5), wallMat);
+        leftWallBoardSide.position.set(-CLASS_WIDTH / 2, 1.75, zCenter - zDir * 8.25);
+        scene.add(leftWallBoardSide);
+        obstacles.push(leftWallBoardSide);
 
-    // Door 2 (Back)
-    const doorGroup2 = new THREE.Group();
-    doorGroup2.position.set(CLASS_WIDTH / 2, 0, door2Z - doorWidth / 2); // Hinge towards back wall
-    doorGroup2.userData = {
-        isOpen: false,
-        openType: 'rotate',
-        openRot: -Math.PI / 2, // Swings outwards to corridor
-        closeRot: 0
-    };
-    const dMesh2 = createPanelDoor(doorWidth, doorHeight, 0.05, doorMeshMat, 'right');
-    dMesh2.position.set(0, doorHeight / 2, doorWidth / 2); // Offset from hinge
-    doorGroup2.add(dMesh2);
-    scene.add(doorGroup2);
-    doorMeshes.push(doorGroup2);
-    obstacles.push(dMesh2);
+        // Solid wall strips only fill the gaps between the three windows.
+        // Right Wall
+        const doorWidth = 1.6;
+        const doorHeight = 2.5;
+        const topWallHeight = CLASS_HEIGHT - doorHeight;
+        const door1Z = zCenter + zDir * 6.7;
+        const door2Z = zCenter - zDir * 6.7;
+
+        const rightWallBack = new THREE.Mesh(new THREE.BoxGeometry(0.2, CLASS_HEIGHT, 1.5), wallMat);
+        rightWallBack.position.set(CLASS_WIDTH / 2, CLASS_HEIGHT / 2, zCenter - zDir * 8.25);
+        scene.add(rightWallBack);
+        obstacles.push(rightWallBack);
+
+        const rightMidBottom = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.0, 11.8), wallMat);
+        rightMidBottom.position.set(CLASS_WIDTH / 2, 0.5, zCenter);
+        scene.add(rightMidBottom);
+        obstacles.push(rightMidBottom);
+
+        const rightMidTop = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.0, 11.8), wallMat);
+        rightMidTop.position.set(CLASS_WIDTH / 2, 3.0, zCenter);
+        scene.add(rightMidTop);
+        obstacles.push(rightMidTop);
+
+        const rightMidFront = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 1.95), wallMat);
+        rightMidFront.position.set(CLASS_WIDTH / 2, 1.75, zCenter + zDir * 4.925);
+        scene.add(rightMidFront);
+        obstacles.push(rightMidFront);
+
+        const rightMidCenter = new THREE.Mesh(new THREE.BoxGeometry(0.2, CLASS_HEIGHT, 2.8), wallMat);
+        rightMidCenter.position.set(CLASS_WIDTH / 2, 1.75, zCenter);
+        scene.add(rightMidCenter);
+        obstacles.push(rightMidCenter);
+
+        const rightMidBack = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 1.95), wallMat);
+        rightMidBack.position.set(CLASS_WIDTH / 2, 1.75, zCenter - zDir * 4.925);
+        scene.add(rightMidBack);
+        obstacles.push(rightMidBack);
+
+        // Matching three windows on the opposite wall, placed between the doors.
+        [-WINDOW_OFFSET, WINDOW_OFFSET].forEach((offset, index) => {
+            const window = createJalousieWindow(zCenter + zDir * offset, WINDOW_WIDTH, CLASS_WIDTH / 2 + 0.01);
+            window.name = `oppositeClassroomWindow${index + 1}`;
+            scene.add(window);
+            obstacles.push(window);
+        });
+
+        // Close the narrow gaps between the outer windows and the doors.
+        [-5.35, 5.35].forEach((offset) => {
+            const doorSideWallFill = new THREE.Mesh(new THREE.BoxGeometry(0.2, CLASS_HEIGHT, 1.1), wallMat);
+            doorSideWallFill.position.set(CLASS_WIDTH / 2, 1.75, zCenter + zDir * offset);
+            scene.add(doorSideWallFill);
+            obstacles.push(doorSideWallFill);
+        });
+
+        const rightWallFront = new THREE.Mesh(new THREE.BoxGeometry(0.2, CLASS_HEIGHT, 1.5), wallMat);
+        rightWallFront.position.set(CLASS_WIDTH / 2, CLASS_HEIGHT / 2, zCenter + zDir * 8.25);
+        scene.add(rightWallFront);
+        obstacles.push(rightWallFront);
+
+        const rightWallTop1 = new THREE.Mesh(new THREE.BoxGeometry(0.2, topWallHeight, doorWidth), wallMat);
+        rightWallTop1.position.set(CLASS_WIDTH / 2, CLASS_HEIGHT - topWallHeight / 2, door1Z);
+        scene.add(rightWallTop1);
+        obstacles.push(rightWallTop1);
+
+        const rightWallTop2 = new THREE.Mesh(new THREE.BoxGeometry(0.2, topWallHeight, doorWidth), wallMat);
+        rightWallTop2.position.set(CLASS_WIDTH / 2, CLASS_HEIGHT - topWallHeight / 2, door2Z);
+        scene.add(rightWallTop2);
+        obstacles.push(rightWallTop2);
+
+        const doorGeo = new THREE.BoxGeometry(0.1, doorHeight, doorWidth);
+        const doorGroup1 = new THREE.Group();
+        doorGroup1.position.set(CLASS_WIDTH / 2, 0, door1Z + doorWidth / 2);
+        doorGroup1.userData = { isOpen: false, openType: 'rotate', openRot: Math.PI / 2, closeRot: 0 };
+        const dMesh1 = createPanelDoor(doorWidth, doorHeight, 0.05, doorMeshMat, 'left');
+        dMesh1.position.set(0, doorHeight / 2, -doorWidth / 2);
+        doorGroup1.add(dMesh1);
+        scene.add(doorGroup1);
+        doorMeshes.push(doorGroup1);
+        obstacles.push(dMesh1);
+
+        const doorGroup2 = new THREE.Group();
+        doorGroup2.position.set(CLASS_WIDTH / 2, 0, door2Z - doorWidth / 2);
+        doorGroup2.userData = { isOpen: false, openType: 'rotate', openRot: -Math.PI / 2, closeRot: 0 };
+        const dMesh2 = createPanelDoor(doorWidth, doorHeight, 0.05, doorMeshMat, 'right');
+        dMesh2.position.set(0, doorHeight / 2, doorWidth / 2);
+        doorGroup2.add(dMesh2);
+        scene.add(doorGroup2);
+        doorMeshes.push(doorGroup2);
+        obstacles.push(dMesh2);
+        
+        // Partition Wall at the front (except for the last room)
+        const partitionWall = new THREE.Mesh(new THREE.BoxGeometry(CLASS_WIDTH + 0.4, CLASS_HEIGHT, 0.2), wallMat);
+        partitionWall.position.set(0, CLASS_HEIGHT / 2, zCenter + SINGLE_ROOM_LENGTH / 2);
+        partitionWall.userData.isWalkObstacle = true;
+        scene.add(partitionWall);
+        obstacles.push(partitionWall);
+
+        const partitionTopBeam = new THREE.Mesh(
+            new THREE.BoxGeometry(CLASS_WIDTH + 0.4, 0.4, 0.4),
+            columnMat
+        );
+        partitionTopBeam.position.set(0, CLASS_HEIGHT - 0.2, zCenter + SINGLE_ROOM_LENGTH / 2);
+        scene.add(partitionTopBeam);
+        obstacles.push(partitionTopBeam);
+
+        const dividerGableShape = new THREE.Shape();
+        dividerGableShape.moveTo(-CLASS_WIDTH / 2, 0);
+        dividerGableShape.lineTo(0, ridgeHeightFromWall - 0.18);
+        dividerGableShape.lineTo(corridorOuterX + 0.2, 0);
+        dividerGableShape.lineTo(-CLASS_WIDTH / 2, 0);
+        const dividerGable = new THREE.Mesh(
+            new THREE.ExtrudeGeometry(dividerGableShape, { depth: 0.2, bevelEnabled: false }),
+            wallMat
+        );
+        dividerGable.position.set(0, CLASS_HEIGHT, zCenter + SINGLE_ROOM_LENGTH / 2);
+        scene.add(dividerGable);
+    }
+
+    for (let i = 0; i < 6; i++) {
+        let zCenter = -CLASS_LENGTH / 2 + (SINGLE_ROOM_LENGTH / 2) + (i * SINGLE_ROOM_LENGTH);
+        buildRoom(zCenter, i);
+    }
+
 }
 
 function setupInitialClassroom() {
-    // Left Board
-    const board1 = Factory.createBoard();
-    board1.position.set(-2.2, 0, -CLASS_LENGTH / 2 + 0.15);
-    addObj(board1);
+    for (let i = 0; i < 6; i++) {
+        let zCenter = -CLASS_LENGTH / 2 + (SINGLE_ROOM_LENGTH / 2) + (i * SINGLE_ROOM_LENGTH);
+        const zDir = (i % 2 === 0) ? 1 : -1;
+        const rotY = (i % 2 === 0) ? 0 : Math.PI; // Wait, originally +Z was BACK of room?
+        // Let's think: board is originally at zCenter - 8.85
+        // If zDir = 1, it's at -8.85. If zDir = -1, it's at +8.85.
+        // So board1 Z: zCenter - zDir * (SINGLE_ROOM_LENGTH / 2 - 0.15)
+        // Originally: board1 at zCenter - 8.85 (which is SINGLE_ROOM_LENGTH/2 - 0.15).
+        
+        const board1 = Factory.createBoard();
+        board1.position.set(-2.2, 0, zCenter - zDir * (SINGLE_ROOM_LENGTH / 2 - 0.15));
+        board1.rotation.y = rotY;
+        addObj(board1);
 
-    // Right Board
-    const board2 = Factory.createBoard();
-    board2.position.set(2.2, 0, -CLASS_LENGTH / 2 + 0.15);
-    addObj(board2);
+        const board2 = Factory.createBoard();
+        board2.position.set(2.2, 0, zCenter - zDir * (SINGLE_ROOM_LENGTH / 2 - 0.15));
+        board2.rotation.y = rotY;
+        addObj(board2);
 
-    // Teacher Desk (Centered)
-    const tDesk = Factory.createTeacherTable();
-    tDesk.position.set(0, 0, -CLASS_LENGTH / 2 + 1.5);
-    addObj(tDesk);
+        const tDesk = Factory.createTeacherTable();
+        tDesk.position.set(0, 0, zCenter - zDir * (SINGLE_ROOM_LENGTH / 2 - 1.5));
+        tDesk.rotation.y = rotY;
+        addObj(tDesk);
 
-    const tChair = Factory.createTeacherChair();
-    tChair.position.set(0, 0, -CLASS_LENGTH / 2 + 0.8);
-    addObj(tChair);
+        const tChair = Factory.createTeacherChair();
+        tChair.position.set(0, 0, zCenter - zDir * (SINGLE_ROOM_LENGTH / 2 - 0.8));
+        tChair.rotation.y = rotY;
+        addObj(tChair);
 
-
-    // Default Seating
-    generateSeating(8, 6);
+        // Eight columns total: one column removed from each side of the previous layout.
+        generateSeatingForRoom(9, 8, zCenter, zDir, rotY);
+    }
 }
-
-function generateSeating(rows, cols) {
+function generateSeatingForRoom(rows, cols, zCenter, zDir, rotY) {
     const spacingX = 1.2;
-    const spacingZ = 1.4; // More legroom
-    const totalWidth = (cols - 1) * spacingX + 0.8; // +0.8 for the middle aisle
+    const spacingZ = zDir * 1.4;
+    const totalWidth = (cols - 1) * spacingX + 0.8;
     const startX = -totalWidth / 2;
-    const startZ = -CLASS_LENGTH / 2 + 3.5; // Slightly backward from board
+    const startZ = zCenter - zDir * (SINGLE_ROOM_LENGTH / 2 - 3.5);
 
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
-            // Aisle in middle
-            const xOff = c >= cols / 2 ? 0.8 : 0;
             const chair = Factory.createStudentChair();
-            chair.position.set(startX + c * spacingX + xOff, 0, startZ + r * spacingZ);
+            let xPos = startX + c * spacingX;
+            if (c >= cols / 2) {
+                xPos += 0.8; 
+            }
+            chair.position.set(xPos, 0, startZ + r * spacingZ);
+            chair.rotation.y = rotY;
             addObj(chair);
         }
     }
@@ -1521,8 +1641,9 @@ function checkCollision(position) {
     const radius = 0.3; // Player radius
 
     // World bounds
-    if (position.z < -25) position.z = -25;
-    if (position.z > 25) position.z = 25;
+    const corridorEnd = CLASS_LENGTH / 2 + 2;
+    if (position.z < -corridorEnd) position.z = -corridorEnd;
+    if (position.z > corridorEnd) position.z = corridorEnd;
     if (position.x < -25) position.x = -25;
     if (position.x > 25) position.x = 25;
 
@@ -1538,29 +1659,9 @@ function checkCollision(position) {
         if (position.x < -fenceX) position.x = -fenceX - radius; else position.x = -fenceX + radius;
     }
     // Back Fence
-    if (position.z > fenceZ - radius && position.z < fenceZ + radius) {
+    if (position.x <= CLASS_WIDTH / 2 + radius && position.z > fenceZ - radius && position.z < fenceZ + radius) {
         if (position.z < fenceZ) position.z = fenceZ - radius; else position.z = fenceZ + radius;
     }
-    // Front Fence (Gates at z = -19)
-    if (position.z > -19 - radius && position.z < -19 + radius) {
-        // Gates are doorMeshes[0] (Big Left), [1] (Big Right), and [2] (Small)
-        const bigGateLeftOpen = doorMeshes[0]?.userData.isOpen;
-        const bigGateRightOpen = doorMeshes[1]?.userData.isOpen;
-        const smallGateOpen = doorMeshes[2]?.userData.isOpen;
-
-        const inBigGateLeft = position.x > -4 && position.x < -1.5;
-        const inBigGateRight = position.x > -1.5 && position.x < 1;
-        const inSmallGate = position.x > 2.5 && position.x < 4.5;
-
-        if ((inBigGateLeft && bigGateLeftOpen) ||
-            (inBigGateRight && bigGateRightOpen) ||
-            (inSmallGate && smallGateOpen)) {
-            // Can pass
-        } else {
-            if (position.z < -19) position.z = -19 - radius; else position.z = -19 + radius;
-        }
-    }
-
     // Classroom Bounds
     const classX = CLASS_WIDTH / 2; // 5
     const classZ = CLASS_LENGTH / 2; // 9
@@ -1585,14 +1686,11 @@ function checkCollision(position) {
     // Right wall (Doorway)
     if (position.z > -classZ + radius && position.z < classZ - radius) {
         if (position.x > classX - radius && position.x < classX + radius) {
-            const inDoor1 = Math.abs(position.z - 6.7) < 1.6 / 2 - radius;
-            const inDoor2 = Math.abs(position.z - -6.7) < 1.6 / 2 - radius;
+            const openDoorHere = doorMeshes.some((door) =>
+                door.userData.isOpen && Math.abs(position.z - door.position.z) < 1.6 / 2 + radius
+            );
 
-            // Classroom doors are doorMeshes[4] and [5]
-            const door1Open = doorMeshes[4]?.userData.isOpen;
-            const door2Open = doorMeshes[5]?.userData.isOpen;
-
-            if ((inDoor1 && door1Open) || (inDoor2 && door2Open)) {
+            if (openDoorHere) {
                 // Pass
             } else {
                 if (position.x < classX) position.x = classX - radius; else position.x = classX + radius;
@@ -1600,8 +1698,10 @@ function checkCollision(position) {
         }
     }
 
-    // Obstacle Check (Furniture)
-    for (let obs of obstacles) {
+    // Obstacle Check (Furniture / interior geometry).
+    // The exterior corridor is intentionally kept free of interior hitboxes.
+    if (position.x <= CLASS_WIDTH / 2 + radius) {
+      for (let obs of obstacles) {
         if (!obs.userData || !obs.userData.isWalkObstacle) continue;
 
         // Simple AABB approximation
@@ -1626,6 +1726,7 @@ function checkCollision(position) {
                 position.z += minDz;
             }
         }
+      }
     }
 
     return position;
