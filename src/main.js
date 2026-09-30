@@ -17,6 +17,8 @@ let moveBackward = false;
 let moveLeft = false;
 let moveRight = false;
 let isSprinting = false;
+let jumpVelocity = 0;
+let canJump = true;
 let isSitting = false;
 let preSitPosition = new THREE.Vector3();
 const velocity = new THREE.Vector3();
@@ -480,7 +482,9 @@ function buildClassroom() {
     endRoomCenters.forEach((z) => {
         const endWall = new THREE.Mesh(new THREE.BoxGeometry(CLASS_WIDTH, CLASS_HEIGHT, 0.18), wallMat);
         endWall.position.set(0, CLASS_HEIGHT / 2, z + (z < 0 ? -endRoomLength / 2 : endRoomLength / 2));
+        endWall.userData.isWalkObstacle = true;
         scene.add(endWall);
+        obstacles.push(endWall);
 
         const endGableHalfSpan = z < 0 ? corridorOuterX - 0.4 : corridorOuterX + 0.2;
         const endGableShape = new THREE.Shape();
@@ -504,7 +508,9 @@ function buildClassroom() {
             if (side === 1) return; // Keep the door-side corridor open.
             const sideWall = new THREE.Mesh(new THREE.BoxGeometry(0.18, CLASS_HEIGHT, endRoomLength), wallMat);
             sideWall.position.set(side * (CLASS_WIDTH / 2 - 0.09), CLASS_HEIGHT / 2, z);
+            sideWall.userData.isWalkObstacle = true;
             scene.add(sideWall);
+            obstacles.push(sideWall);
         });
 
         [-1, 1].forEach((xSide) => {
@@ -561,7 +567,9 @@ function buildClassroom() {
             corridorRailMat
         );
         endRoomRailing.position.set(corridorOuterX, 0.48, z);
+        endRoomRailing.userData.isWalkObstacle = true;
         scene.add(endRoomRailing);
+        obstacles.push(endRoomRailing);
 
         const endRoomTopRail = new THREE.Mesh(
             new THREE.BoxGeometry(0.18, 0.12, endRoomLength),
@@ -604,7 +612,9 @@ function buildClassroom() {
             corridorRailMat
         );
         endSideRailing.position.set(corridorCenterX, 0.48, endZ);
+        endSideRailing.userData.isWalkObstacle = true;
         scene.add(endSideRailing);
+        obstacles.push(endSideRailing);
 
         const endSideTopRail = new THREE.Mesh(
             new THREE.BoxGeometry(2.2, 0.12, 0.18),
@@ -1549,6 +1559,13 @@ function onKeyDown(event) {
             case 'KeyS': moveBackward = true; break;
             case 'KeyD': moveRight = true; break;
             case 'ShiftLeft': isSprinting = true; break;
+            case 'Space':
+                event.preventDefault();
+                if (canJump && !isSitting) {
+                    jumpVelocity = 5.5;
+                    canJump = false;
+                }
+                break;
             case 'KeyE': interact(); break;
         }
     }
@@ -1640,8 +1657,20 @@ function updateWalkHUD() {
 function checkCollision(position) {
     const radius = 0.3; // Player radius
 
+    // Only the low hallway wall blocks crossing; railing/tubes remain non-solid.
+    const hallwayWallX = CLASS_WIDTH / 2 + 2.2;
+    const hallwayWallHalfThickness = 0.07;
+    if (position.z > -CLASS_LENGTH / 2 && position.z < CLASS_LENGTH / 2 &&
+        position.x > hallwayWallX - hallwayWallHalfThickness - radius &&
+        position.x < hallwayWallX + hallwayWallHalfThickness + radius) {
+        position.x = position.x < hallwayWallX
+            ? hallwayWallX - hallwayWallHalfThickness - radius
+            : hallwayWallX + hallwayWallHalfThickness + radius;
+    }
+
     // World bounds
-    const corridorEnd = CLASS_LENGTH / 2 + 2;
+    // Include both attached end-room/free-space areas in the walkable length.
+    const corridorEnd = CLASS_LENGTH / 2 + SINGLE_ROOM_LENGTH / 3 + 1;
     if (position.z < -corridorEnd) position.z = -corridorEnd;
     if (position.z > corridorEnd) position.z = corridorEnd;
     if (position.x < -25) position.x = -25;
@@ -1687,7 +1716,8 @@ function checkCollision(position) {
     if (position.z > -classZ + radius && position.z < classZ - radius) {
         if (position.x > classX - radius && position.x < classX + radius) {
             const openDoorHere = doorMeshes.some((door) =>
-                door.userData.isOpen && Math.abs(position.z - door.position.z) < 1.6 / 2 + radius
+                door.userData.isOpen &&
+                Math.abs(position.z - (door.position.z + (door.children[0]?.position.z || 0))) < 1.6 / 2 - radius
             );
 
             if (openDoorHere) {
@@ -1698,10 +1728,8 @@ function checkCollision(position) {
         }
     }
 
-    // Obstacle Check (Furniture / interior geometry).
-    // The exterior corridor is intentionally kept free of interior hitboxes.
-    if (position.x <= CLASS_WIDTH / 2 + radius) {
-      for (let obs of obstacles) {
+    // Obstacle Check (walls and explicitly marked walk obstacles).
+    for (let obs of obstacles) {
         if (!obs.userData || !obs.userData.isWalkObstacle) continue;
 
         // Simple AABB approximation
@@ -1726,7 +1754,6 @@ function checkCollision(position) {
                 position.z += minDz;
             }
         }
-      }
     }
 
     return position;
@@ -1775,9 +1802,18 @@ function animate() {
             const position = walkCamera.position;
             const newPos = checkCollision(position.clone());
             position.copy(newPos);
-            position.y = 1.6; // Keep at eye level
+
+            jumpVelocity -= 16.0 * delta;
+            position.y += jumpVelocity * delta;
+            if (position.y <= 1.6) {
+                position.y = 1.6;
+                jumpVelocity = 0;
+                canJump = true;
+            }
         } else {
             velocity.set(0, 0, 0);
+            jumpVelocity = 0;
+            canJump = true;
             walkCamera.position.y = 1.1; // Sitting eye level
         }
 
