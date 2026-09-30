@@ -1552,7 +1552,7 @@ function onKeyDown(event) {
                 }
                 break;
         }
-    } else if (currentMode === 'WALK') {
+    } else if (currentMode === 'WALK' || currentMode === 'VIEW') {
         switch (event.code) {
             case 'KeyW': moveForward = true; break;
             case 'KeyA': moveLeft = true; break;
@@ -1572,7 +1572,7 @@ function onKeyDown(event) {
 }
 
 function onKeyUp(event) {
-    if (currentMode === 'WALK') {
+    if (currentMode === 'WALK' || currentMode === 'VIEW') {
         switch (event.code) {
             case 'KeyW': moveForward = false; break;
             case 'KeyA': moveLeft = false; break;
@@ -1818,6 +1818,23 @@ function animate() {
         }
 
         updateWalkHUD();
+    }
+
+    if (currentMode === 'VIEW') {
+        const viewDirection = new THREE.Vector3();
+        editCamera.getWorldDirection(viewDirection);
+        viewDirection.y = 0;
+        viewDirection.normalize();
+        const viewRight = new THREE.Vector3().crossVectors(viewDirection, editCamera.up).normalize();
+        const viewMove = new THREE.Vector3();
+        viewMove.addScaledVector(viewDirection, Number(moveForward) - Number(moveBackward));
+        viewMove.addScaledVector(viewRight, Number(moveRight) - Number(moveLeft));
+        if (viewMove.lengthSq() > 0) {
+            viewMove.normalize().multiplyScalar(10.0 * delta);
+            editCamera.position.add(viewMove);
+            orbitControls.target.add(viewMove);
+            orbitControls.update();
+        }
     }
 
     prevTime = time;
