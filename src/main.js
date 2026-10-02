@@ -42,6 +42,227 @@ const WINDOW_OFFSET = 3.1;
 
 let doorMeshes = [];
 
+// Shared security-device materials and small model helpers. These devices
+// are visual room details and are intentionally not added to obstacles.
+const securityLockMat = new THREE.MeshStandardMaterial({
+    color: 0x20252d,
+    roughness: 0.28,
+    metalness: 0.65
+});
+const securityKeypadMat = new THREE.MeshStandardMaterial({
+    color: 0x36515b,
+    emissive: 0x102a33,
+    emissiveIntensity: 0.65,
+    roughness: 0.35,
+    metalness: 0.35
+});
+const securityCameraMat = new THREE.MeshStandardMaterial({
+    color: 0x252b31,
+    roughness: 0.3,
+    metalness: 0.55
+});
+const securityLensMat = new THREE.MeshStandardMaterial({
+    color: 0x5db7d4,
+    emissive: 0x174c62,
+    emissiveIntensity: 0.8,
+    roughness: 0.2,
+    metalness: 0.45
+});
+const extinguisherMat = new THREE.MeshStandardMaterial({
+    color: 0xc7372f,
+    roughness: 0.42,
+    metalness: 0.2
+});
+const extinguisherDarkMat = new THREE.MeshStandardMaterial({
+    color: 0x252525,
+    roughness: 0.5,
+    metalness: 0.35
+});
+const firstAidBodyMat = new THREE.MeshStandardMaterial({
+    color: 0xf2f0e7,
+    roughness: 0.72,
+    metalness: 0.05
+});
+const firstAidCrossMat = new THREE.MeshStandardMaterial({
+    color: 0x35a85a,
+    roughness: 0.5,
+    metalness: 0.05
+});
+const smokeDetectorMat = new THREE.MeshStandardMaterial({
+    color: 0xe8e9e5,
+    roughness: 0.8,
+    metalness: 0.0
+});
+
+function createDigitalLock(width, height, thickness, handleSide = 'left', axis = 'z') {
+    const lockGroup = new THREE.Group();
+    const lockY = -height / 2 + height * 0.48;
+    const coordinate = handleSide === 'left'
+        ? -width / 2 + 0.18
+        : width / 2 - 0.18;
+    const body = axis === 'z'
+        ? new THREE.Mesh(new THREE.BoxGeometry(thickness + 0.10, 0.22, 0.16), securityLockMat)
+        : new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.22, thickness + 0.10), securityLockMat);
+    body.position.set(axis === 'z' ? 0 : coordinate, lockY, axis === 'z' ? coordinate : 0);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    lockGroup.add(body);
+
+    const keypad = axis === 'z'
+        ? new THREE.Mesh(new THREE.BoxGeometry(thickness + 0.115, 0.10, 0.10), securityKeypadMat)
+        : new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.10, thickness + 0.115), securityKeypadMat);
+    keypad.position.set(axis === 'z' ? 0 : coordinate, lockY + 0.02, axis === 'z' ? coordinate : 0);
+    keypad.castShadow = true;
+    lockGroup.add(keypad);
+    lockGroup.name = 'DigitalLock';
+    lockGroup.userData.isSecurityDevice = true;
+    return lockGroup;
+}
+
+function addRoomCctv(position, target, name) {
+    const cameraGroup = new THREE.Group();
+    cameraGroup.position.copy(position);
+    cameraGroup.lookAt(target);
+
+    const mount = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.045, 0.045, 0.10, 12),
+        securityCameraMat
+    );
+    mount.position.y = 0.045;
+    const body = new THREE.Mesh(
+        new THREE.BoxGeometry(0.34, 0.18, 0.26),
+        securityCameraMat
+    );
+    body.position.y = -0.06;
+    const lens = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055, 0.065, 0.08, 12),
+        securityLensMat
+    );
+    lens.rotation.x = -Math.PI / 2;
+    lens.position.set(0, -0.06, -0.17);
+    [mount, body, lens].forEach((part) => {
+        part.castShadow = true;
+        part.receiveShadow = true;
+        cameraGroup.add(part);
+    });
+    cameraGroup.name = name;
+    cameraGroup.userData.isSecurityDevice = true;
+    scene.add(cameraGroup);
+}
+
+function addRoomFireExtinguisher(position, name) {
+    const extinguisher = new THREE.Group();
+    extinguisher.position.copy(position);
+
+    const body = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.13, 0.55, 14),
+        extinguisherMat
+    );
+    body.position.y = 0.30;
+    const neck = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055, 0.065, 0.12, 12),
+        extinguisherDarkMat
+    );
+    neck.position.y = 0.64;
+    const handle = new THREE.Mesh(
+        new THREE.TorusGeometry(0.075, 0.018, 8, 12, Math.PI),
+        extinguisherDarkMat
+    );
+    handle.rotation.x = Math.PI / 2;
+    handle.position.set(0, 0.72, 0);
+    const hose = new THREE.Mesh(
+        new THREE.TorusGeometry(0.09, 0.014, 8, 12, Math.PI * 0.75),
+        extinguisherDarkMat
+    );
+    hose.rotation.z = Math.PI / 2;
+    hose.position.set(0.075, 0.53, 0.02);
+    [body, neck, handle, hose].forEach((part) => {
+        part.castShadow = true;
+        part.receiveShadow = true;
+        extinguisher.add(part);
+    });
+    extinguisher.name = name;
+    extinguisher.userData.isSecurityDevice = true;
+    scene.add(extinguisher);
+}
+
+function addRoomSmokeDetector(position, name) {
+    const detector = new THREE.Group();
+    detector.position.copy(position);
+    const base = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.18, 0.18, 0.06, 16),
+        smokeDetectorMat
+    );
+    const led = new THREE.Mesh(
+        new THREE.SphereGeometry(0.025, 10, 8),
+        securityLensMat
+    );
+    led.position.set(0.09, 0.04, 0);
+    base.castShadow = true;
+    base.receiveShadow = true;
+    led.castShadow = true;
+    detector.add(base, led);
+    detector.name = name;
+    detector.userData.isSecurityDevice = true;
+    scene.add(detector);
+}
+
+function addRoomFirstAidKit(position, name) {
+    const kit = new THREE.Group();
+    kit.position.copy(position);
+    const box = new THREE.Mesh(
+        new THREE.BoxGeometry(0.12, 0.48, 0.38),
+        firstAidBodyMat
+    );
+    const verticalCross = new THREE.Mesh(
+        new THREE.BoxGeometry(0.025, 0.28, 0.07),
+        firstAidCrossMat
+    );
+    const horizontalCross = new THREE.Mesh(
+        new THREE.BoxGeometry(0.025, 0.07, 0.22),
+        firstAidCrossMat
+    );
+    verticalCross.position.x = 0.075;
+    horizontalCross.position.x = 0.075;
+    [box, verticalCross, horizontalCross].forEach((part) => {
+        part.castShadow = true;
+        part.receiveShadow = true;
+        kit.add(part);
+    });
+    kit.name = name;
+    kit.userData.isSecurityDevice = true;
+    scene.add(kit);
+}
+
+function addClassroomSecurityPackage(zCenter, roomIndex) {
+    const cornerX = CLASS_WIDTH / 2 - 0.45;
+    const cornerZ = SINGLE_ROOM_LENGTH / 2 - 0.45;
+    const cameraTarget = new THREE.Vector3(0, 1.45, zCenter);
+    [-1, 1].forEach((xSide) => {
+        [-1, 1].forEach((zSide) => {
+            addRoomCctv(
+                new THREE.Vector3(xSide * cornerX, CLASS_HEIGHT - 0.30, zCenter + zSide * cornerZ),
+                cameraTarget,
+                `classroom${roomIndex + 1}CCTV${xSide > 0 ? 'Right' : 'Left'}${zSide > 0 ? 'Front' : 'Back'}`
+            );
+        });
+    });
+
+    const zDir = (roomIndex % 2 === 0) ? 1 : -1;
+    addRoomFireExtinguisher(
+        new THREE.Vector3(CLASS_WIDTH / 2 - 0.42, 0.0, zCenter + zDir * 5.55),
+        `classroom${roomIndex + 1}FireExtinguisher`
+    );
+    addRoomSmokeDetector(
+        new THREE.Vector3(0, CLASS_HEIGHT - 0.08, zCenter),
+        `classroom${roomIndex + 1}SmokeDetector`
+    );
+    addRoomFirstAidKit(
+        new THREE.Vector3(-CLASS_WIDTH / 2 + 0.22, 1.35, zCenter - zDir * 7.65),
+        `classroom${roomIndex + 1}FirstAidKit`
+    );
+}
+
 init();
 animate();
 
@@ -152,6 +373,48 @@ function createEndRoomStairToSecond() {
     const flightGap = 0.0;
     const flightOffsetZ = stairWidth / 2 + flightGap;
     const landingX = stairTopX + stairRun / 2;
+    const railingMat = new THREE.MeshStandardMaterial({
+        color: 0x9dc359,
+        roughness: 0.65,
+        metalness: 0.15
+    });
+    const handrailHeight = 0.90;
+    const handrailThickness = 0.10;
+    const railingPostThickness = 0.08;
+    // Use one real-world spacing target so short and long railing sections
+    // have the same support density instead of only matching percentages.
+    const railingPostSpacing = 0.60;
+    const getRailingPostRatios = (length) => {
+        const segmentCount = Math.max(1, Math.ceil(length / railingPostSpacing));
+        return Array.from({ length: segmentCount + 1 }, (_, index) => index / segmentCount);
+    };
+    const createRailingTube = (length, radius) => {
+        const tubeGroup = new THREE.Group();
+        const tubeBody = new THREE.Mesh(
+            new THREE.CylinderGeometry(radius, radius, length, 12, 1, true),
+            railingMat
+        );
+        const topCap = new THREE.Mesh(
+            new THREE.SphereGeometry(radius, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+            railingMat
+        );
+        const bottomCap = new THREE.Mesh(
+            new THREE.SphereGeometry(radius, 12, 6, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
+            railingMat
+        );
+        topCap.position.y = length / 2;
+        bottomCap.position.y = -length / 2;
+        [tubeBody, topCap, bottomCap].forEach((part) => {
+            part.castShadow = true;
+            part.receiveShadow = true;
+            tubeGroup.add(part);
+        });
+        // Treat the complete rounded tube as one walk obstacle so the
+        // cylinder and its end caps block the player together.
+        tubeGroup.userData.isWalkObstacle = true;
+        obstacles.push(tubeGroup);
+        return tubeGroup;
+    };
     const addFlight = (startX, endX, baseY, z, prefix) => {
         // Use one thin sloped slab underneath the flight instead of stacking
         // full-height blocks. The underside now follows the stair incline.
@@ -227,6 +490,159 @@ function createEndRoomStairToSecond() {
         }
     };
 
+    const addFlightRailing = (startX, endX, baseY, z, prefix, railSides) => {
+        const flightStepCount = stepCount / 2;
+        const flightRise = stepHeight * flightStepCount;
+        const flightRun = endX - startX;
+        // Start and finish the handrail at the same height above each floor
+        // or landing so the switchback rail ends meet cleanly.
+        const railRise = flightRise;
+        const railLength = Math.hypot(flightRun, railRise);
+        const railAngle = Math.atan2(railRise, flightRun);
+        const railCenterY = baseY + flightRise / 2 + handrailHeight;
+
+        railSides.forEach((side) => {
+            const railZ = z + side * (stairWidth / 2 - handrailThickness / 2);
+            const handrail = createRailingTube(railLength, handrailThickness / 2);
+            handrail.position.set((startX + endX) / 2, railCenterY, railZ);
+            handrail.rotation.z = railAngle - Math.PI / 2;
+            handrail.name = `${prefix}GreenHandrail${side > 0 ? 'Outer' : 'Inner'}`;
+            handrail.castShadow = true;
+            handrail.receiveShadow = true;
+            scene.add(handrail);
+
+            getRailingPostRatios(railLength).forEach((t, index) => {
+                const stepIndex = Math.max(0, Math.min(flightStepCount, Math.ceil(t * flightStepCount)));
+                const treadTopY = baseY + stepHeight * stepIndex;
+                const railY = baseY + t * railRise + handrailHeight;
+                const postHeight = Math.max(0.12, railY - treadTopY);
+                const post = createRailingTube(postHeight, railingPostThickness / 2);
+                post.position.set(
+                    startX + flightRun * t,
+                    treadTopY + postHeight / 2,
+                    railZ
+                );
+                post.name = `${prefix}GreenRailingPost${side > 0 ? 'Outer' : 'Inner'}${index + 1}`;
+                post.castShadow = true;
+                post.receiveShadow = true;
+                scene.add(post);
+            });
+        });
+    };
+
+    const addLandingRailing = (baseY, centerX, centerZ, prefix, railSides) => {
+        const landingTopY = baseY + CLASS_HEIGHT / 2;
+        // Stop the landing rail at the upper-flight start so the horizontal
+        // and sloped rails meet cleanly instead of overlapping.
+        const landingRailLength = 1.70;
+        const landingRailCenterX = centerX - 0.15;
+        const landingPostOffset = landingRailLength / 2 - railingPostThickness / 2;
+        railSides.forEach((side) => {
+            const railZ = centerZ + side * (stairWidth - handrailThickness / 2);
+            const handrail = createRailingTube(landingRailLength, handrailThickness / 2);
+            handrail.position.set(landingRailCenterX, landingTopY + handrailHeight, railZ);
+            handrail.rotation.z = -Math.PI / 2;
+            handrail.name = `${prefix}GreenLandingHandrail${side > 0 ? 'Outer' : 'Inner'}`;
+            handrail.castShadow = true;
+            handrail.receiveShadow = true;
+            scene.add(handrail);
+
+            getRailingPostRatios(landingRailLength).forEach((t, index) => {
+                const offset = -landingPostOffset + (landingPostOffset * 2 * t);
+                const post = createRailingTube(handrailHeight, railingPostThickness / 2);
+                post.position.set(landingRailCenterX + offset, landingTopY + handrailHeight / 2, railZ);
+                post.name = `${prefix}GreenLandingPost${side > 0 ? 'Outer' : 'Inner'}${index + 1}`;
+                post.castShadow = true;
+                post.receiveShadow = true;
+                scene.add(post);
+            });
+        });
+    };
+
+    const addCrHallwayRailing = (baseY, endSide, stairCenterZ, prefix, edgeSide = -endSide) => {
+        // Guard the open edge beside the stair while keeping the hallway to
+        // the CR on the wall side clear. There is no fall at ground level.
+        if (baseY === 0) return;
+
+        const hallwayFloorY = baseY + 0.06;
+        // Place the rail on the requested edge of the stair opening.
+        const hallwayRailShiftZ = edgeSide * 0.05;
+        const hallwayCenterZ = stairCenterZ + edgeSide * stairWidth + hallwayRailShiftZ;
+        // Align the far end with the upper-stair endpoint so the two rails
+        // finish flush instead of leaving an overhanging tip.
+        const hallwayRailShiftX = -0.20;
+        const hallwayEndPostX = CLASS_WIDTH / 2 - 0.085 + hallwayRailShiftX;
+        // Keep the CR-side end just clear of the wall/landing edge so this
+        // rail does not overlap the adjacent railing or wall.
+        const hallwayStartX = landingX - 1.50 + hallwayRailShiftX;
+        // Finish the handrail at the end-post line so its tip does not extend
+        // past the post when viewed from the hallway.
+        const hallwayRailEndX = hallwayEndPostX;
+        const hallwayRailLength = Math.abs(hallwayRailEndX - hallwayStartX);
+        const hallwayHandrail = createRailingTube(hallwayRailLength, handrailThickness / 2);
+        // Follow the walkway toward the CR instead of running along the
+        // stair-side edge.
+        hallwayHandrail.rotation.z = -Math.PI / 2;
+        hallwayHandrail.position.set(
+            (hallwayStartX + hallwayRailEndX) / 2,
+            hallwayFloorY + handrailHeight,
+            hallwayCenterZ
+        );
+        hallwayHandrail.name = `${prefix}GreenCrHallwayHandrail`;
+        hallwayHandrail.castShadow = true;
+        hallwayHandrail.receiveShadow = true;
+        scene.add(hallwayHandrail);
+
+        const hallwayPostBottomY = hallwayFloorY;
+        const hallwayPostHeight = handrailHeight + (hallwayFloorY - hallwayPostBottomY);
+        getRailingPostRatios(hallwayRailLength).forEach((t, index) => {
+            const post = createRailingTube(hallwayPostHeight, railingPostThickness / 2);
+            post.position.set(
+                hallwayStartX + (hallwayEndPostX - hallwayStartX) * t,
+                hallwayPostBottomY + hallwayPostHeight / 2,
+                hallwayCenterZ
+            );
+            post.name = `${prefix}GreenCrHallwayPost${index + 1}`;
+            post.castShadow = true;
+            post.receiveShadow = true;
+            scene.add(post);
+        });
+    };
+
+    const addFourthFloorOpeningEndGuard = (baseY, endSide, stairCenterZ, prefix) => {
+        if (baseY !== CLASS_HEIGHT * 3) return;
+
+        const floorY = baseY + 0.06;
+        const guardX = CLASS_WIDTH / 2 - 0.085;
+        // Keep the stair-width opening clear and retain the guard only on
+        // the side opposite the stair approach.
+        const guardLength = stairWidth + 0.10;
+        const handrail = createRailingTube(guardLength, handrailThickness / 2);
+        handrail.rotation.x = Math.PI / 2;
+        handrail.position.set(
+            guardX,
+            floorY + handrailHeight,
+            stairCenterZ + endSide * guardLength / 2
+        );
+        handrail.name = `${prefix}GreenFourthFloorOpeningEndGuard`;
+        handrail.castShadow = true;
+        handrail.receiveShadow = true;
+        scene.add(handrail);
+
+        getRailingPostRatios(guardLength).forEach((t, index) => {
+            const post = createRailingTube(handrailHeight, railingPostThickness / 2);
+            post.position.set(
+                guardX,
+                floorY + handrailHeight / 2,
+                stairCenterZ + endSide * guardLength * t
+            );
+            post.name = `${prefix}GreenFourthFloorOpeningEndPost${index + 1}`;
+            post.castShadow = true;
+            post.receiveShadow = true;
+            scene.add(post);
+        });
+    };
+
     // Make the landing twice as thick as the individual stair treads.
     const landingThickness = stairSlabThickness * 2;
     const stairLevels = [
@@ -246,6 +662,16 @@ function createEndRoomStairToSecond() {
 
             // First flight rises toward the middle landing.
             addFlight(stairBottomX, landingX, baseY, lowerFlightZ, `endRoom${sideName}${levelName}LowerStairStep`);
+            // The opposite side is against the end wall; rail only the open
+            // inner edge of this flight.
+            addFlightRailing(
+                stairBottomX,
+                landingX,
+                baseY,
+                lowerFlightZ,
+                `endRoom${sideName}${levelName}LowerStair`,
+                baseY > 0 ? [-endSide] : []
+            );
 
             const middleLanding = new THREE.Mesh(
                 new THREE.BoxGeometry(2.0, landingThickness, stairWidth * 2 + flightGap * 2),
@@ -256,6 +682,19 @@ function createEndRoomStairToSecond() {
             middleLanding.castShadow = true;
             middleLanding.receiveShadow = true;
             scene.add(middleLanding);
+            addLandingRailing(
+                baseY,
+                landingX - 0.70,
+                stairCenterZ,
+                `endRoom${sideName}${levelName}`,
+                [-endSide]
+            );
+            addCrHallwayRailing(
+                baseY,
+                endSide,
+                stairCenterZ,
+                `endRoom${sideName}${levelName}`
+            );
 
             // Keep the lower landing filled as before. The 2nd-to-3rd-floor
             // landing stays as a thin slab with an open underside, so it does
@@ -282,7 +721,25 @@ function createEndRoomStairToSecond() {
 
             // Second flight reverses direction, forming the U-shaped switchback.
             addFlight(landingX, upperEndX, baseY + CLASS_HEIGHT / 2, upperFlightZ, `endRoom${sideName}${levelName}UpperStairStep`);
-
+            // The upper flight mirrors the open edge of the lower flight.
+            addFlightRailing(
+                landingX,
+                upperEndX,
+                baseY + CLASS_HEIGHT / 2,
+                upperFlightZ,
+                `endRoom${sideName}${levelName}UpperStair`,
+                [-endSide]
+            );
+            // Add the matching guard on the other open side of the upper
+            // flight. This is additive only; the existing railing stays put.
+            addFlightRailing(
+                landingX,
+                upperEndX,
+                baseY + CLASS_HEIGHT / 2,
+                upperFlightZ,
+                `endRoom${sideName}${levelName}UpperStairOpenSide`,
+                [endSide]
+            );
             // Close the short horizontal gap between the last upper step and
             // the wall line with a thin cap, not a full-height end panel.
             const upperStairCapEndX = CLASS_WIDTH / 2 - 0.085;
@@ -301,6 +758,35 @@ function createEndRoomStairToSecond() {
                 upperStairCap.castShadow = true;
                 upperStairCap.receiveShadow = true;
                 scene.add(upperStairCap);
+            }
+
+            // Guard the open fourth-floor hallway edge beside the top of the
+            // stair. The lower levels already receive this guard from their
+            // stair-level setup, but the top floor has no next flight to add it.
+            if (baseY === CLASS_HEIGHT * 2) {
+                addCrHallwayRailing(
+                    CLASS_HEIGHT * 3,
+                    endSide,
+                    stairCenterZ,
+                    `endRoom${sideName}FourthFloor`
+                );
+                // The opposite side of the top-floor opening is also exposed;
+                // add its matching guard so the stairwell is enclosed on both
+                // open edges.
+                addCrHallwayRailing(
+                    CLASS_HEIGHT * 3,
+                    endSide,
+                    stairCenterZ,
+                    `endRoom${sideName}FourthFloorOppositeEdge`,
+                    endSide
+                );
+                addFourthFloorOpeningEndGuard(
+                    CLASS_HEIGHT * 3,
+                    endSide,
+                    stairCenterZ,
+                    `endRoom${sideName}FourthFloor`
+                );
+
             }
 
         });
@@ -462,6 +948,8 @@ function createUnderStairRooms() {
         doorGroup.userData = {
             isOpen: false,
             openType: 'rotate',
+            // The doorway is on the corridor-side wall, so swing the panel
+            // inward into the under-stair room instead of blocking the hall.
             openRot: -Math.PI / 2,
             closeRot: 0,
             openingZ: centerZ
@@ -511,6 +999,29 @@ function createUnderStairRooms() {
         addRail(middleRailHeight, middleRailY);
         addRail(topRailHeight, doorHeight - topRailHeight / 2);
 
+        // Keep traditional knobs only on the under-stair room doors.
+        const underStairHandleMat = new THREE.MeshStandardMaterial({
+            color: 0xaaaaaa,
+            metalness: 0.8,
+            roughness: 0.2
+        });
+const underStairHandleZ = panelCenterZ + doorWidth / 2 - stileWidth / 2;
+        const underStairHandlePlate = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.04, 0.04, doorThickness + 0.02, 16),
+            underStairHandleMat
+        );
+        underStairHandlePlate.rotation.z = Math.PI / 2;
+        underStairHandlePlate.position.set(0, lockRailY, underStairHandleZ);
+        doorGroup.add(underStairHandlePlate);
+        [-1, 1].forEach((side) => {
+            const knob = new THREE.Mesh(
+                new THREE.SphereGeometry(0.035, 16, 16),
+                underStairHandleMat
+            );
+            knob.position.set(side * (doorThickness / 2 + 0.04), lockRailY, underStairHandleZ);
+            doorGroup.add(knob);
+        });
+
         const mullionWidth = 0.15;
         const bottomMullion = new THREE.Mesh(
             new THREE.BoxGeometry(doorThickness, bottomPanelHeight, mullionWidth),
@@ -529,18 +1040,6 @@ function createUnderStairRooms() {
                 panelCenterZ + side * (railWidth / 2 - middlePanelSpace - mullionWidth / 2)
             );
             doorGroup.add(mullion);
-        });
-
-        const handleMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.8, roughness: 0.2 });
-        const handleZ = panelCenterZ - doorWidth / 2 + stileWidth / 2;
-        const handlePlate = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, doorThickness + 0.02, 16), handleMat);
-        handlePlate.rotation.z = Math.PI / 2;
-        handlePlate.position.set(0, lockRailY, handleZ);
-        doorGroup.add(handlePlate);
-        [-1, 1].forEach((side) => {
-            const knob = new THREE.Mesh(new THREE.SphereGeometry(0.035, 16, 16), handleMat);
-            knob.position.set(side * (doorThickness / 2 + 0.04), lockRailY, handleZ);
-            doorGroup.add(knob);
         });
 
         const doorEdges = new THREE.LineSegments(
@@ -779,7 +1278,6 @@ function createEndRoomBathrooms(baseY = 0, floorGroupName = 'firstFloor') {
         bathroomDoorMesh.receiveShadow = true;
         bathroomDoorMesh.userData.isWalkObstacle = true;
         bathroomDoorPanel.add(bathroomDoorMesh);
-
         // Raised stiles and rails give the CR door the same multi-panel look
         // as the regular classroom doors.
         const stileWidth = 0.15;
@@ -812,6 +1310,33 @@ function createEndRoomBathrooms(baseY = 0, floorGroupName = 'firstFloor') {
         addDoorBar(railWidth, middleRailHeight, 0, middleRailY);
         addDoorBar(railWidth, topRailHeight, 0, bathroomDoorHeight - topRailHeight / 2);
 
+        // Keep traditional knobs only on CR doors.
+        const bathroomHandleMat = new THREE.MeshStandardMaterial({
+            color: 0xaaaaaa,
+            metalness: 0.8,
+            roughness: 0.2
+        });
+        const bathroomHandleX = bathroomDoorWidth / 2 - 0.22;
+        const bathroomHandlePlate = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.045, 0.045, bathroomDoorThickness + 0.03, 16),
+            bathroomHandleMat
+        );
+        bathroomHandlePlate.rotation.x = Math.PI / 2;
+        bathroomHandlePlate.position.set(bathroomHandleX, lockRailY, 0);
+        bathroomDoorPanel.add(bathroomHandlePlate);
+        [-1, 1].forEach((side) => {
+            const bathroomKnob = new THREE.Mesh(
+                new THREE.SphereGeometry(0.035, 16, 16),
+                bathroomHandleMat
+            );
+            bathroomKnob.position.set(
+                bathroomHandleX,
+                lockRailY,
+                side * (bathroomDoorThickness / 2 + 0.04)
+            );
+            bathroomDoorPanel.add(bathroomKnob);
+        });
+
         const mullionWidth = 0.15;
         addDoorBar(
             mullionWidth,
@@ -836,31 +1361,6 @@ function createEndRoomBathrooms(baseY = 0, floorGroupName = 'firstFloor') {
         bathroomDoorEdges.position.y = bathroomDoorHeight / 2;
         bathroomDoorPanel.add(bathroomDoorEdges);
 
-        // Match the classroom door hardware: gray metal plate with knobs on
-        // both sides of the door thickness.
-        const bathroomHandleMat = new THREE.MeshStandardMaterial({
-            color: 0xaaaaaa,
-            metalness: 0.8,
-            roughness: 0.2
-        });
-        const handleX = bathroomDoorWidth / 2 - 0.22;
-        const handlePlate = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.045, 0.045, bathroomDoorThickness + 0.03, 16),
-            bathroomHandleMat
-        );
-        handlePlate.rotation.x = Math.PI / 2;
-        handlePlate.position.set(handleX, lockRailY, 0);
-        bathroomDoorPanel.add(handlePlate);
-        const bathroomKnobGeo = new THREE.SphereGeometry(0.035, 16, 16);
-        [-1, 1].forEach((side) => {
-            const bathroomKnob = new THREE.Mesh(bathroomKnobGeo, bathroomHandleMat);
-            bathroomKnob.position.set(
-                handleX,
-                lockRailY,
-                side * (bathroomDoorThickness / 2 + 0.04)
-            );
-            bathroomDoorPanel.add(bathroomKnob);
-        });
         scene.add(bathroomDoorGroup);
         doorMeshes.push(bathroomDoorGroup);
         obstacles.push(bathroomDoorPanel);
@@ -1161,6 +1661,7 @@ function buildClassroom() {
             corridorStructureMat
         );
         post.position.set(corridorOuterX, CLASS_HEIGHT / 2, z);
+        post.name = Math.abs(z) < 1e-6 ? 'corridorOuterPostCenter' : 'corridorOuterPost';
         post.castShadow = true;
         scene.add(post);
         corridorPosts.push(post);
@@ -1170,6 +1671,7 @@ function buildClassroom() {
         new THREE.BoxGeometry(0.14, 0.95, CLASS_LENGTH),
         corridorRailMat
     );
+    corridorBalustrade.name = 'corridorBalustrade';
     corridorBalustrade.position.set(corridorOuterX, 0.48, 0);
     corridorBalustrade.castShadow = true;
     scene.add(corridorBalustrade);
@@ -1178,6 +1680,7 @@ function buildClassroom() {
         new THREE.BoxGeometry(0.18, 0.12, CLASS_LENGTH),
         corridorStructureMat
     );
+    corridorTopRail.name = 'corridorTopRail';
     corridorTopRail.position.set(corridorOuterX, 1.02, 0);
     corridorTopRail.userData.isWalkObstacle = true;
     obstacles.push(corridorTopRail);
@@ -1189,6 +1692,7 @@ function buildClassroom() {
         new THREE.CylinderGeometry(0.06, 0.06, CLASS_LENGTH, 16),
         greenTubeMat
     );
+    terraceGreenTube.name = 'terraceGreenTube';
     terraceGreenTube.rotation.x = Math.PI / 2;
     terraceGreenTube.position.set(corridorOuterX, 1.32, 0);
     terraceGreenTube.castShadow = true;
@@ -1198,6 +1702,7 @@ function buildClassroom() {
         new THREE.BoxGeometry(0.4, 0.4, CLASS_LENGTH),
         corridorStructureMat
     );
+    corridorUpperHorizontalPost.name = 'corridorUpperHorizontalPost';
     corridorUpperHorizontalPost.position.set(corridorOuterX, CLASS_HEIGHT - 0.2, 0);
     corridorUpperHorizontalPost.userData.isWalkObstacle = true;
     obstacles.push(corridorUpperHorizontalPost);
@@ -1209,6 +1714,9 @@ function buildClassroom() {
             new THREE.CylinderGeometry(0.08, 0.08, 1.32, 16),
             greenTubeMat
         );
+        terraceGreenTubeSupport.name = Math.abs(z) < 1e-6
+            ? 'corridorGreenTubeSupportCenter'
+            : 'corridorGreenTubeSupport';
         terraceGreenTubeSupport.position.set(corridorOuterX + 0.12, 0.66, z);
         terraceGreenTubeSupport.castShadow = true;
         scene.add(terraceGreenTubeSupport);
@@ -1218,6 +1726,7 @@ function buildClassroom() {
         new THREE.CylinderGeometry(0.08, 0.08, 1.32, 16),
         greenTubeMat
     );
+    centerGreenTubeSupport.name = 'corridorCenterGreenTubeSupport';
     centerGreenTubeSupport.position.set(corridorOuterX + 0.12, 0.66, 0);
     centerGreenTubeSupport.castShadow = true;
     scene.add(centerGreenTubeSupport);
@@ -1228,11 +1737,13 @@ function buildClassroom() {
         const startZ = sortedRailingPosts[i];
         const endZ = sortedRailingPosts[i + 1];
         [0.25, 0.5, 0.75].forEach((ratio) => {
+            const uprightZ = startZ + (endZ - startZ) * ratio;
             const visibleGreenUpright = new THREE.Mesh(
                 new THREE.CylinderGeometry(0.07, 0.07, 0.42, 16),
                 greenTubeMat
             );
-            visibleGreenUpright.position.set(corridorOuterX, 1.14, startZ + (endZ - startZ) * ratio);
+            visibleGreenUpright.name = 'corridorGreenUpright';
+            visibleGreenUpright.position.set(corridorOuterX, 1.14, uprightZ);
             visibleGreenUpright.castShadow = true;
             scene.add(visibleGreenUpright);
         });
@@ -1888,7 +2399,7 @@ function buildClassroom() {
         bottomRail.position.set(0, bottomRailY, 0);
         group.add(bottomRail);
 
-        // 2. Lock Rail (where knob is)
+        // 2. Lock rail for the digital lock
         const lockRailY = -height / 2 + bottomRailHeight + hBottomPanels + lockRailHeight / 2;
         const lockRail = new THREE.Mesh(railGeo, material);
         lockRail.scale.y = lockRailHeight;
@@ -1932,26 +2443,6 @@ function buildClassroom() {
 
         // Top section has 1 large panel, so no mullions needed.
 
-        // Classic Round Door Knob
-        const handleMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.8, roughness: 0.2 });
-        const hZ = handleSide === 'left' ? -width / 2 + stileWidth / 2 : width / 2 - stileWidth / 2;
-
-        const plateGeo = new THREE.CylinderGeometry(0.04, 0.04, thickness + 0.02, 16);
-        const plate = new THREE.Mesh(plateGeo, handleMat);
-        plate.rotation.z = Math.PI / 2;
-        plate.position.set(0, lockRailY, hZ);
-        group.add(plate);
-
-        const knobGeo = new THREE.SphereGeometry(0.035, 16, 16);
-
-        const knobLeft = new THREE.Mesh(knobGeo, handleMat);
-        knobLeft.position.set(-thickness / 2 - 0.04, lockRailY, hZ);
-        group.add(knobLeft);
-
-        const knobRight = new THREE.Mesh(knobGeo, handleMat);
-        knobRight.position.set(thickness / 2 + 0.04, lockRailY, hZ);
-        group.add(knobRight);
-
         // Darker lines to simulate panel depth
         const edgeGeo = new THREE.EdgesGeometry(baseGeo);
         const edgeMat = new THREE.LineBasicMaterial({ color: 0x5a7530, linewidth: 2 });
@@ -1981,27 +2472,7 @@ function createPlasticDoor(width, height, thickness, colorHex, handleSide = 'lef
             group.add(slat);
         }
 
-        // Round Door Knob
-        const handleMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.8, roughness: 0.2 });
         const midRailY = -0.1; // Slightly below center
-        const hZ = handleSide === 'left' ? -width / 2 + 0.15 : width / 2 - 0.15;
-
-        // Rosette
-        const plateGeo = new THREE.CylinderGeometry(0.04, 0.04, thickness + 0.02, 16);
-        const plate = new THREE.Mesh(plateGeo, handleMat);
-        plate.rotation.z = Math.PI / 2;
-        plate.position.set(0, midRailY, hZ);
-        group.add(plate);
-
-        // Knob
-        const knobGeo = new THREE.SphereGeometry(0.035, 16, 16);
-        const knobLeft = new THREE.Mesh(knobGeo, handleMat);
-        knobLeft.position.set(-thickness / 2 - 0.04, midRailY, hZ);
-        group.add(knobLeft);
-
-        const knobRight = new THREE.Mesh(knobGeo, handleMat);
-        knobRight.position.set(thickness / 2 + 0.04, midRailY, hZ);
-        group.add(knobRight);
 
         return group;
     }
@@ -2246,6 +2717,7 @@ function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 
         doorGroup1.userData = { isOpen: false, openType: 'rotate', openRot: Math.PI / 2, closeRot: 0, openingZ: door1Z };
         const dMesh1 = createPanelDoor(doorWidth, doorHeight, 0.05, doorMeshMat, 'left');
         dMesh1.position.set(0, doorHeight / 2, -doorWidth / 2);
+        dMesh1.add(createDigitalLock(doorWidth, doorHeight, 0.05, 'left', 'z'));
         doorGroup1.add(dMesh1);
         scene.add(doorGroup1);
         doorMeshes.push(doorGroup1);
@@ -2256,6 +2728,7 @@ function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 
         doorGroup2.userData = { isOpen: false, openType: 'rotate', openRot: -Math.PI / 2, closeRot: 0, openingZ: door2Z };
         const dMesh2 = createPanelDoor(doorWidth, doorHeight, 0.05, doorMeshMat, 'right');
         dMesh2.position.set(0, doorHeight / 2, doorWidth / 2);
+        dMesh2.add(createDigitalLock(doorWidth, doorHeight, 0.05, 'right', 'z'));
         doorGroup2.add(dMesh2);
         scene.add(doorGroup2);
         doorMeshes.push(doorGroup2);
@@ -2288,6 +2761,10 @@ function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 
         dividerGable.userData.noThirdFloorClone = true;
         dividerGable.position.set(0, CLASS_HEIGHT, zCenter + SINGLE_ROOM_LENGTH / 2);
         scene.add(dividerGable);
+
+        // Add the security package to the source floor. The floor-cloning
+        // setup below carries these room devices to every school floor.
+        addClassroomSecurityPackage(zCenter, i);
     }
 
     for (let i = 0; i < 6; i++) {
