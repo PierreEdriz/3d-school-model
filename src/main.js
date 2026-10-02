@@ -116,6 +116,605 @@ function init() {
     createSecondFloor();
     createFirstFloor();
     liftBuildingStackToGround();
+    createEndRoomStairToSecond();
+    createUnderStairRooms();
+    createEndRoomBathrooms();
+}
+
+function createEndRoomStairToSecond() {
+    const stairMat = new THREE.MeshStandardMaterial({
+        color: 0xb8b2a0,
+        roughness: 0.95,
+        metalness: 0.0
+    });
+    const corridorOuterX = CLASS_WIDTH / 2 + 2.2;
+    // Keep the complete stair footprint inside the add-room post line.
+    const stairRun = 9.5;
+    const stairWidth = 2.10;
+    const stepCount = 20;
+    const stepDepth = stairRun / stepCount;
+    const stepHeight = CLASS_HEIGHT / stepCount;
+    const stairSlabThickness = 0.12;
+    // Shift the complete stair assembly into the end-room footprint while
+    // keeping its top edge aligned with the corridor-side boundary.
+    const stairTopX = corridorOuterX - 11.7;
+    const stairBottomX = stairTopX + stairRun;
+    // Trim the gray upper-flight end so it clears the recessed door.
+    const upperEndX = CLASS_WIDTH / 2 - 0.30;
+    const stairBackOffset = 0.825;
+    const endRoomCenterZ = CLASS_LENGTH / 2 + SINGLE_ROOM_LENGTH / 6 + stairBackOffset;
+    // Keep the two flights as separate parallel meshes, but flush their edges
+    // together so the switchback has no visible gap at the middle.
+    const flightGap = 0.0;
+    const flightOffsetZ = stairWidth / 2 + flightGap;
+    const landingX = stairTopX + stairRun / 2;
+    const addFlight = (startX, endX, baseY, z, prefix) => {
+        for (let i = 0; i < stepCount / 2; i++) {
+            const stepHeightTotal = stepHeight * (i + 1);
+            const step = new THREE.Mesh(
+                new THREE.BoxGeometry(stepDepth + 0.02, stepHeightTotal + stairSlabThickness, stairWidth),
+                stairMat
+            );
+            const t = (i + 0.5) / (stepCount / 2);
+            step.position.set(
+                startX + (endX - startX) * t,
+                baseY + stepHeightTotal / 2 - stairSlabThickness / 2,
+                z
+            );
+            step.name = `${prefix}${i + 1}`;
+            step.castShadow = true;
+            step.receiveShadow = true;
+            scene.add(step);
+        }
+    };
+
+    const landingThickness = 0.14;
+    // Build the same switchback at both attached-room ends. Mirroring the
+    // Z position keeps both staircases aligned with their respective post line.
+    [1, -1].forEach((endSide) => {
+        const stairCenterZ = endSide * endRoomCenterZ;
+        const lowerFlightZ = stairCenterZ + endSide * flightOffsetZ;
+        const upperFlightZ = stairCenterZ - endSide * flightOffsetZ;
+        const sideName = endSide > 0 ? 'Positive' : 'Negative';
+
+        // First flight rises toward the middle landing.
+        addFlight(stairBottomX, landingX, 0, lowerFlightZ, `endRoom${sideName}LowerStairStep`);
+
+        const middleLanding = new THREE.Mesh(
+            new THREE.BoxGeometry(2.0, landingThickness, stairWidth * 2 + flightGap * 2),
+            stairMat
+        );
+        middleLanding.position.set(landingX - 0.70, CLASS_HEIGHT / 2 - landingThickness / 2, stairCenterZ);
+        middleLanding.name = `endRoom${sideName}StairMiddleLanding`;
+        middleLanding.castShadow = true;
+        middleLanding.receiveShadow = true;
+        scene.add(middleLanding);
+
+        // Close the open space below the landing with a solid support that
+        // matches the landing footprint. This removes the visible gap and
+        // prevents the player from walking through the underside.
+        const landingSupportHeight = CLASS_HEIGHT / 2 - landingThickness;
+        const landingSupport = new THREE.Mesh(
+            new THREE.BoxGeometry(2.0, landingSupportHeight, stairWidth * 2 + flightGap * 2),
+            stairMat
+        );
+        landingSupport.position.set(
+            landingX - 0.70,
+            landingSupportHeight / 2,
+            stairCenterZ
+        );
+        landingSupport.name = `endRoom${sideName}StairLandingUnderfill`;
+        landingSupport.castShadow = true;
+        landingSupport.receiveShadow = true;
+        landingSupport.userData.isWalkObstacle = true;
+        obstacles.push(landingSupport);
+        scene.add(landingSupport);
+
+        // Second flight reverses direction, forming the U-shaped switchback.
+        addFlight(landingX, upperEndX, CLASS_HEIGHT / 2, upperFlightZ, `endRoom${sideName}UpperStairStep`);
+
+        // Fill the short trimmed section up to the recessed door/frame line.
+        const upperStepCount = stepCount / 2;
+        const lastUpperStepCenter = landingX +
+            (upperEndX - landingX) * ((upperStepCount - 0.5) / upperStepCount);
+        const lastUpperStepEdge = lastUpperStepCenter + (stepDepth + 0.02) / 2;
+        const upperStairFillEndX = CLASS_WIDTH / 2 - 0.085;
+        const upperStairFillWidth = upperStairFillEndX - lastUpperStepEdge;
+        if (upperStairFillWidth > 0) {
+            const fillHeight = CLASS_HEIGHT / 2 + stairSlabThickness;
+            const stairEndFill = new THREE.Mesh(
+                new THREE.BoxGeometry(upperStairFillWidth, fillHeight, stairWidth),
+                stairMat
+            );
+            stairEndFill.position.set(
+                lastUpperStepEdge + upperStairFillWidth / 2,
+                CLASS_HEIGHT / 2 + CLASS_HEIGHT / 4 - stairSlabThickness / 2,
+                upperFlightZ
+            );
+            stairEndFill.name = `endRoom${sideName}UpperStairEndFill`;
+            stairEndFill.castShadow = true;
+            stairEndFill.receiveShadow = true;
+            scene.add(stairEndFill);
+        }
+    });
+}
+
+function createUnderStairRooms() {
+    const wallMat = new THREE.MeshStandardMaterial({
+        color: 0xb8b2a0,
+        roughness: 0.85,
+        metalness: 0.0,
+        side: THREE.DoubleSide
+    });
+    const floorMat = new THREE.MeshStandardMaterial({
+        color: 0xb8b2a0,
+        roughness: 0.95,
+        metalness: 0.0,
+        side: THREE.DoubleSide
+    });
+    const doorMat = new THREE.MeshStandardMaterial({
+        color: 0x9dc359,
+        roughness: 0.3,
+        metalness: 0.1
+    });
+
+    const stairTopX = CLASS_WIDTH / 2 + 2.2 - 11.7;
+    const stairRun = 9.5;
+    const landingX = stairTopX + stairRun / 2;
+    const stairWidth = 2.10;
+    const flightOffsetZ = stairWidth / 2;
+    const roomMinX = landingX;
+    const roomMaxX = CLASS_WIDTH / 2;
+    const wallThickness = 0.18;
+    const roomWidth = roomMaxX - roomMinX;
+    const roomDepth = stairWidth;
+    // Keep the room walls below the underside of the first upper step.
+    const roomHeight = CLASS_HEIGHT / 2 - 0.12;
+    const doorWidth = 1.5;
+    const doorHeight = 2.5;
+    const doorFrameHeight = doorHeight + 0.1;
+    const roomCenterX = (roomMinX + roomMaxX) / 2;
+    const roomCenterZ = CLASS_LENGTH / 2 + SINGLE_ROOM_LENGTH / 6 + 0.825 - flightOffsetZ;
+
+    const addSolidWall = (geometry, position, name) => {
+        const wall = new THREE.Mesh(geometry, wallMat);
+        wall.position.copy(position);
+        wall.name = name;
+        wall.castShadow = true;
+        wall.receiveShadow = true;
+        wall.userData.isWalkObstacle = true;
+        scene.add(wall);
+        obstacles.push(wall);
+    };
+
+    // Mirror the under-stair room beneath the upper flight at both attached
+    // ends so the right and left sides have the same layout and collision.
+    [1, -1].forEach((endSide) => {
+        const centerZ = endSide * roomCenterZ;
+        const roomFloor = new THREE.Mesh(
+            new THREE.BoxGeometry(roomWidth, 0.06, roomDepth),
+            floorMat
+        );
+        roomFloor.position.set(roomCenterX, 0.03, centerZ);
+        roomFloor.name = `underStairRoomFloor${endSide > 0 ? 'Positive' : 'Negative'}`;
+        roomFloor.receiveShadow = true;
+        scene.add(roomFloor);
+
+        // Inner wall and the two end walls form the room beneath the flights.
+        addSolidWall(
+            new THREE.BoxGeometry(wallThickness, roomHeight, roomDepth),
+            new THREE.Vector3(roomMinX + wallThickness / 2, roomHeight / 2, centerZ),
+            `underStairRoomInnerWall${endSide > 0 ? 'Positive' : 'Negative'}`
+        );
+        [-1, 1].forEach((zSide) => {
+            addSolidWall(
+                new THREE.BoxGeometry(roomWidth, roomHeight, wallThickness),
+                new THREE.Vector3(roomCenterX, roomHeight / 2, centerZ + zSide * (roomDepth / 2 - wallThickness / 2)),
+                `underStairRoomEndWall${endSide > 0 ? 'Positive' : 'Negative'}${zSide > 0 ? 'Outer' : 'Inner'}`
+            );
+        });
+
+        // Corridor-side wall with a centered door opening.
+        const sideWallLength = (roomDepth - doorWidth) / 2;
+        [-1, 1].forEach((zSide) => {
+            addSolidWall(
+                new THREE.BoxGeometry(wallThickness, doorFrameHeight, sideWallLength),
+                new THREE.Vector3(
+                    roomMaxX - wallThickness / 2,
+                    doorFrameHeight / 2,
+                    centerZ + zSide * (doorWidth / 2 + sideWallLength / 2)
+                ),
+                `underStairRoomDoorSide${endSide > 0 ? 'Positive' : 'Negative'}${zSide > 0 ? 'Outer' : 'Inner'}`
+            );
+        });
+        addSolidWall(
+            new THREE.BoxGeometry(wallThickness, doorFrameHeight - doorHeight, doorWidth),
+            new THREE.Vector3(roomMaxX - wallThickness / 2, doorHeight + (doorFrameHeight - doorHeight) / 2, centerZ),
+            `underStairRoomDoorLintel${endSide > 0 ? 'Positive' : 'Negative'}`
+        );
+
+        // Close the open strip above the door frame all the way to the slab.
+        // Without this infill, the space from the lintel to the upper stair
+        // reads as a dark gap when viewed from the corridor.
+        const doorAboveHeight = CLASS_HEIGHT - doorFrameHeight;
+        if (doorAboveHeight > 0) {
+            addSolidWall(
+                new THREE.BoxGeometry(wallThickness, doorAboveHeight, roomDepth),
+                new THREE.Vector3(
+                    roomMaxX - wallThickness / 2,
+                    doorFrameHeight + doorAboveHeight / 2,
+                    centerZ
+                ),
+                `underStairRoomDoorAboveFill${endSide > 0 ? 'Positive' : 'Negative'}`
+            );
+        }
+
+        const doorGroup = new THREE.Group();
+        doorGroup.position.set(roomMaxX - 0.06, 0, centerZ - doorWidth / 2);
+        doorGroup.userData = {
+            isOpen: false,
+            openType: 'rotate',
+            openRot: -Math.PI / 2,
+            closeRot: 0,
+            openingZ: centerZ
+        };
+        const doorThickness = 0.05;
+        const panelCenterY = doorHeight / 2;
+        const panelCenterZ = doorWidth / 2;
+        const doorMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(doorThickness * 0.4, doorHeight, doorWidth),
+            doorMat
+        );
+        doorMesh.position.set(0, panelCenterY, panelCenterZ);
+        doorMesh.name = 'underStairRoomDoor';
+        doorMesh.castShadow = true;
+        doorMesh.receiveShadow = true;
+        doorMesh.userData.isWalkObstacle = true;
+        doorGroup.add(doorMesh);
+
+        const stileWidth = 0.15;
+        const stileGeo = new THREE.BoxGeometry(doorThickness, doorHeight, stileWidth);
+        [-1, 1].forEach((side) => {
+            const stile = new THREE.Mesh(stileGeo, doorMat);
+            stile.position.set(0, panelCenterY, panelCenterZ + side * (doorWidth / 2 - stileWidth / 2));
+            doorGroup.add(stile);
+        });
+
+        const bottomRailHeight = 0.25;
+        const bottomPanelHeight = doorHeight * 0.35;
+        const lockRailHeight = 0.15;
+        const middlePanelHeight = doorHeight * 0.2;
+        const middleRailHeight = 0.15;
+        const topRailHeight = 0.15;
+        const railWidth = doorWidth - 2 * stileWidth;
+        const railGeo = new THREE.BoxGeometry(doorThickness, 1, railWidth);
+        const addRail = (height, y) => {
+            const rail = new THREE.Mesh(railGeo, doorMat);
+            rail.scale.y = height;
+            rail.position.set(0, y, panelCenterZ);
+            doorGroup.add(rail);
+        };
+
+        const bottomRailY = bottomRailHeight / 2;
+        const lockRailY = bottomRailHeight + bottomPanelHeight + lockRailHeight / 2;
+        const middleRailY = lockRailY + lockRailHeight / 2 + middlePanelHeight + middleRailHeight / 2;
+        addRail(bottomRailHeight, bottomRailY);
+        addRail(lockRailHeight, lockRailY);
+        addRail(middleRailHeight, middleRailY);
+        addRail(topRailHeight, doorHeight - topRailHeight / 2);
+
+        const mullionWidth = 0.15;
+        const bottomMullion = new THREE.Mesh(
+            new THREE.BoxGeometry(doorThickness, bottomPanelHeight, mullionWidth),
+            doorMat
+        );
+        bottomMullion.position.set(0, lockRailY - lockRailHeight / 2 - bottomPanelHeight / 2, panelCenterZ);
+        doorGroup.add(bottomMullion);
+
+        const middleMullionGeo = new THREE.BoxGeometry(doorThickness, middlePanelHeight, mullionWidth);
+        const middlePanelSpace = (railWidth - 2 * mullionWidth) / 3;
+        [-1, 1].forEach((side) => {
+            const mullion = new THREE.Mesh(middleMullionGeo, doorMat);
+            mullion.position.set(
+                0,
+                lockRailY + lockRailHeight / 2 + middlePanelHeight / 2,
+                panelCenterZ + side * (railWidth / 2 - middlePanelSpace - mullionWidth / 2)
+            );
+            doorGroup.add(mullion);
+        });
+
+        const handleMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.8, roughness: 0.2 });
+        const handleZ = panelCenterZ - doorWidth / 2 + stileWidth / 2;
+        const handlePlate = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, doorThickness + 0.02, 16), handleMat);
+        handlePlate.rotation.z = Math.PI / 2;
+        handlePlate.position.set(0, lockRailY, handleZ);
+        doorGroup.add(handlePlate);
+        [-1, 1].forEach((side) => {
+            const knob = new THREE.Mesh(new THREE.SphereGeometry(0.035, 16, 16), handleMat);
+            knob.position.set(side * (doorThickness / 2 + 0.04), lockRailY, handleZ);
+            doorGroup.add(knob);
+        });
+
+        const doorEdges = new THREE.LineSegments(
+            new THREE.EdgesGeometry(new THREE.BoxGeometry(doorThickness * 0.4, doorHeight, doorWidth)),
+            new THREE.LineBasicMaterial({ color: 0x5a7530, linewidth: 2 })
+        );
+        doorEdges.position.set(0, panelCenterY, panelCenterZ);
+        doorGroup.add(doorEdges);
+        scene.add(doorGroup);
+        doorMeshes.push(doorGroup);
+        obstacles.push(doorMesh);
+    });
+}
+
+function createEndRoomBathrooms() {
+    const wallMat = new THREE.MeshStandardMaterial({
+        color: 0xeedcb0,
+        roughness: 0.85,
+        metalness: 0.0,
+        side: THREE.DoubleSide
+    });
+    const floorMat = new THREE.MeshStandardMaterial({
+        color: 0xb8b2a0,
+        roughness: 0.95,
+        metalness: 0.0,
+        side: THREE.DoubleSide
+    });
+    const doorMat = new THREE.MeshStandardMaterial({
+        color: 0x9dc359,
+        roughness: 0.3,
+        metalness: 0.1
+    });
+
+    // The strip on the classroom side of the stair is unused. Keep the CR
+    // inside the add-room bay and outside the complete stair footprint.
+    const stairTopX = CLASS_WIDTH / 2 + 2.2 - 11.7;
+    const stairRun = 9.5;
+    const landingX = stairTopX + stairRun / 2;
+    const stairWidth = 2.10;
+    const wallThickness = 0.16;
+    const bathroomMinX = -CLASS_WIDTH / 2 + wallThickness;
+    // Restore the CR to the previous landing-edge position.
+    const landingCenterX = landingX - 0.70;
+    const landingBackEdgeX = landingCenterX - 2.0 / 2;
+    const bathroomMaxX = landingBackEdgeX;
+    const bathroomWidth = bathroomMaxX - bathroomMinX;
+    const endRoomLength = SINGLE_ROOM_LENGTH / 3;
+    // Match the CR exactly to the combined width of the two stair flights.
+    const bathroomDepth = stairWidth * 2;
+    const bathroomCenterZ = CLASS_LENGTH / 2 + endRoomLength / 2 + 0.825;
+
+    const addSolid = (geometry, position, material, name) => {
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.copy(position);
+        mesh.name = name;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.userData.isWalkObstacle = true;
+        scene.add(mesh);
+        obstacles.push(mesh);
+        return mesh;
+    };
+
+    [1, -1].forEach((endSide) => {
+        const sideName = endSide > 0 ? 'Positive' : 'Negative';
+        const centerZ = endSide * bathroomCenterZ;
+        const innerZ = centerZ - endSide * (bathroomDepth / 2);
+        const outerZ = centerZ + endSide * (bathroomDepth / 2);
+
+        // Keep the original first-floor outer wall aligned with the CR edge.
+        const firstFloor = scene.getObjectByName('firstFloor');
+        const outerWallName = `endRoomOuterWall${sideName}`;
+        const originalOuterWalls = [];
+        firstFloor?.traverse((part) => {
+            if (part.name === outerWallName) originalOuterWalls.push(part);
+        });
+        originalOuterWalls.forEach((part) => {
+            part.parent?.remove(part);
+            const obstacleIndex = obstacles.indexOf(part);
+            if (obstacleIndex !== -1) obstacles.splice(obstacleIndex, 1);
+        });
+
+        const bathroomFloor = new THREE.Mesh(
+            new THREE.BoxGeometry(bathroomWidth, 0.06, bathroomDepth),
+            floorMat
+        );
+        bathroomFloor.position.set((bathroomMinX + bathroomMaxX) / 2, 0.03, centerZ);
+        bathroomFloor.name = `endRoomBathroomFloor${sideName}`;
+        bathroomFloor.receiveShadow = true;
+        scene.add(bathroomFloor);
+
+        // Close the top of the CR so the room is fully enclosed instead of
+        // leaving an exposed rectangular opening above the walls.
+        const bathroomCeiling = new THREE.Mesh(
+            new THREE.BoxGeometry(bathroomWidth, 0.08, bathroomDepth),
+            wallMat
+        );
+        bathroomCeiling.position.set(
+            (bathroomMinX + bathroomMaxX) / 2,
+            CLASS_HEIGHT - 0.04,
+            centerZ
+        );
+        bathroomCeiling.name = `endRoomBathroomCeiling${sideName}`;
+        bathroomCeiling.castShadow = true;
+        bathroomCeiling.receiveShadow = true;
+        bathroomCeiling.userData.isWalkObstacle = true;
+        obstacles.push(bathroomCeiling);
+        scene.add(bathroomCeiling);
+
+        // Inner end wall with a door opening facing the remaining side space.
+        const bathroomDoorWidth = 1.5;
+        const bathroomDoorHeight = 2.5;
+        const bathroomDoorCenterX = (bathroomMinX + bathroomMaxX) / 2;
+        const bathroomDoorSideWidth = (bathroomWidth - bathroomDoorWidth) / 2;
+        const innerWallZ = innerZ + endSide * wallThickness / 2;
+        [-1, 1].forEach((xSide) => {
+            addSolid(
+                new THREE.BoxGeometry(bathroomDoorSideWidth, CLASS_HEIGHT, wallThickness),
+                new THREE.Vector3(
+                    bathroomDoorCenterX + xSide * (bathroomDoorWidth / 2 + bathroomDoorSideWidth / 2),
+                    CLASS_HEIGHT / 2,
+                    innerWallZ
+                ),
+                wallMat,
+                `endRoomBathroomBackWall${sideName}${xSide > 0 ? 'Right' : 'Left'}`
+            );
+        });
+        addSolid(
+            new THREE.BoxGeometry(bathroomDoorWidth, CLASS_HEIGHT - bathroomDoorHeight, wallThickness),
+            new THREE.Vector3(
+                bathroomDoorCenterX,
+                bathroomDoorHeight + (CLASS_HEIGHT - bathroomDoorHeight) / 2,
+                innerWallZ
+            ),
+            wallMat,
+            `endRoomBathroomDoorLintel${sideName}`
+        );
+
+        // Panel door placed in the side opening, with the same interaction
+        // behavior as the other doors in the building.
+        const bathroomDoorGroup = new THREE.Group();
+        // Put the group origin on the left hinge, matching the classroom door
+        // setup so opening rotates from the side instead of the center.
+        bathroomDoorGroup.position.set(bathroomDoorCenterX - bathroomDoorWidth / 2, 0, innerWallZ);
+        bathroomDoorGroup.userData = {
+            isOpen: false,
+            openType: 'rotate',
+            openRot: endSide * Math.PI / 2,
+            closeRot: 0,
+            openingZ: innerWallZ,
+            openingAxis: 'x',
+            openingX: bathroomDoorCenterX,
+            openingWidth: bathroomDoorWidth
+        };
+        const bathroomDoorThickness = 0.06;
+        const bathroomDoorPanel = new THREE.Group();
+        bathroomDoorPanel.position.x = bathroomDoorWidth / 2;
+        bathroomDoorGroup.add(bathroomDoorPanel);
+        const bathroomDoorMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(bathroomDoorWidth, bathroomDoorHeight, bathroomDoorThickness * 0.4),
+            doorMat
+        );
+        bathroomDoorMesh.position.y = bathroomDoorHeight / 2;
+        bathroomDoorMesh.name = `endRoomBathroomDoor${sideName}`;
+        bathroomDoorMesh.castShadow = true;
+        bathroomDoorMesh.receiveShadow = true;
+        bathroomDoorMesh.userData.isWalkObstacle = true;
+        bathroomDoorPanel.add(bathroomDoorMesh);
+
+        // Raised stiles and rails give the CR door the same multi-panel look
+        // as the regular classroom doors.
+        const stileWidth = 0.15;
+        const bottomRailHeight = 0.25;
+        const bottomPanelHeight = bathroomDoorHeight * 0.35;
+        const lockRailHeight = 0.15;
+        const middlePanelHeight = bathroomDoorHeight * 0.20;
+        const middleRailHeight = 0.15;
+        const topRailHeight = 0.15;
+        const railWidth = bathroomDoorWidth - 2 * stileWidth;
+        const addDoorBar = (width, height, x, y) => {
+            const bar = new THREE.Mesh(
+                new THREE.BoxGeometry(width, height, bathroomDoorThickness),
+                doorMat
+            );
+            bar.position.set(x, y, 0);
+            bar.castShadow = true;
+            bar.receiveShadow = true;
+            bathroomDoorPanel.add(bar);
+        };
+
+        addDoorBar(stileWidth, bathroomDoorHeight, -bathroomDoorWidth / 2 + stileWidth / 2, bathroomDoorHeight / 2);
+        addDoorBar(stileWidth, bathroomDoorHeight, bathroomDoorWidth / 2 - stileWidth / 2, bathroomDoorHeight / 2);
+
+        const bottomRailY = bottomRailHeight / 2;
+        const lockRailY = bottomRailHeight + bottomPanelHeight + lockRailHeight / 2;
+        const middleRailY = lockRailY + lockRailHeight / 2 + middlePanelHeight + middleRailHeight / 2;
+        addDoorBar(railWidth, bottomRailHeight, 0, bottomRailY);
+        addDoorBar(railWidth, lockRailHeight, 0, lockRailY);
+        addDoorBar(railWidth, middleRailHeight, 0, middleRailY);
+        addDoorBar(railWidth, topRailHeight, 0, bathroomDoorHeight - topRailHeight / 2);
+
+        const mullionWidth = 0.15;
+        addDoorBar(
+            mullionWidth,
+            bottomPanelHeight,
+            0,
+            lockRailY - lockRailHeight / 2 - bottomPanelHeight / 2
+        );
+        const middlePanelSpace = (railWidth - 2 * mullionWidth) / 3;
+        [-1, 1].forEach((xSide) => {
+            addDoorBar(
+                mullionWidth,
+                middlePanelHeight,
+                xSide * (railWidth / 2 - middlePanelSpace - mullionWidth / 2),
+                lockRailY + lockRailHeight / 2 + middlePanelHeight / 2
+            );
+        });
+
+        const bathroomDoorEdges = new THREE.LineSegments(
+            new THREE.EdgesGeometry(new THREE.BoxGeometry(bathroomDoorWidth, bathroomDoorHeight, bathroomDoorThickness * 0.4)),
+            new THREE.LineBasicMaterial({ color: 0x304117, linewidth: 2 })
+        );
+        bathroomDoorEdges.position.y = bathroomDoorHeight / 2;
+        bathroomDoorPanel.add(bathroomDoorEdges);
+
+        // Match the classroom door hardware: gray metal plate with knobs on
+        // both sides of the door thickness.
+        const bathroomHandleMat = new THREE.MeshStandardMaterial({
+            color: 0xaaaaaa,
+            metalness: 0.8,
+            roughness: 0.2
+        });
+        const handleX = bathroomDoorWidth / 2 - 0.22;
+        const handlePlate = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.045, 0.045, bathroomDoorThickness + 0.03, 16),
+            bathroomHandleMat
+        );
+        handlePlate.rotation.x = Math.PI / 2;
+        handlePlate.position.set(handleX, lockRailY, 0);
+        bathroomDoorPanel.add(handlePlate);
+        const bathroomKnobGeo = new THREE.SphereGeometry(0.035, 16, 16);
+        [-1, 1].forEach((side) => {
+            const bathroomKnob = new THREE.Mesh(bathroomKnobGeo, bathroomHandleMat);
+            bathroomKnob.position.set(
+                handleX,
+                lockRailY,
+                side * (bathroomDoorThickness / 2 + 0.04)
+            );
+            bathroomDoorPanel.add(bathroomKnob);
+        });
+        scene.add(bathroomDoorGroup);
+        doorMeshes.push(bathroomDoorGroup);
+        obstacles.push(bathroomDoorPanel);
+
+        // Classroom-side wall.
+        addSolid(
+            new THREE.BoxGeometry(wallThickness, CLASS_HEIGHT, bathroomDepth),
+            new THREE.Vector3(bathroomMinX + wallThickness / 2, CLASS_HEIGHT / 2, centerZ),
+            wallMat,
+            `endRoomBathroomSideWall${sideName}`
+        );
+
+        // Solid wall facing the stair landing; no opening is left here.
+        addSolid(
+            new THREE.BoxGeometry(wallThickness, CLASS_HEIGHT, bathroomDepth),
+            new THREE.Vector3(bathroomMaxX - wallThickness / 2, CLASS_HEIGHT / 2, centerZ),
+            wallMat,
+            `endRoomBathroomLandingWall${sideName}`
+        );
+
+        // Keep the CR's outer/back side completely solid—no door or opening.
+        addSolid(
+            new THREE.BoxGeometry(CLASS_WIDTH, CLASS_HEIGHT, 0.18),
+            new THREE.Vector3(
+                0,
+                CLASS_HEIGHT / 2,
+                outerZ
+            ),
+            wallMat,
+            `endRoomBathroomSolidBackWall${sideName}`
+        );
+    });
 }
 
 function createThirdFloor() {
@@ -402,6 +1001,8 @@ function buildClassroom() {
         corridorStructureMat
     );
     corridorTopRail.position.set(corridorOuterX, 1.02, 0);
+    corridorTopRail.userData.isWalkObstacle = true;
+    obstacles.push(corridorTopRail);
     corridorTopRail.castShadow = true;
     scene.add(corridorTopRail);
 
@@ -420,6 +1021,8 @@ function buildClassroom() {
         corridorStructureMat
     );
     corridorUpperHorizontalPost.position.set(corridorOuterX, CLASS_HEIGHT - 0.2, 0);
+    corridorUpperHorizontalPost.userData.isWalkObstacle = true;
+    obstacles.push(corridorUpperHorizontalPost);
     corridorUpperHorizontalPost.castShadow = true;
     scene.add(corridorUpperHorizontalPost);
 
@@ -688,6 +1291,7 @@ function buildClassroom() {
     const addedRoomBeams = [];
     endRoomCenters.forEach((z) => {
         const endWall = new THREE.Mesh(new THREE.BoxGeometry(CLASS_WIDTH, CLASS_HEIGHT, 0.18), wallMat);
+        endWall.name = `endRoomOuterWall${z > 0 ? 'Positive' : 'Negative'}`;
         endWall.position.set(0, CLASS_HEIGHT / 2, z + (z < 0 ? -endRoomLength / 2 : endRoomLength / 2));
         endWall.userData.isWalkObstacle = true;
         scene.add(endWall);
@@ -789,6 +1393,8 @@ function buildClassroom() {
         );
         endRoomTopRail.name = 'endRoomTopRail';
         endRoomTopRail.position.set(corridorOuterX, 1.02, z);
+        endRoomTopRail.userData.isWalkObstacle = true;
+        obstacles.push(endRoomTopRail);
         scene.add(endRoomTopRail);
 
         const endGreenTube = new THREE.Mesh(
@@ -805,7 +1411,10 @@ function buildClassroom() {
             new THREE.BoxGeometry(0.4, 0.4, endRoomLength),
             corridorStructureMat
         );
+        endRoomUpperPost.name = 'endRoomUpperPost';
         endRoomUpperPost.position.set(corridorOuterX, CLASS_HEIGHT - 0.2, z);
+        endRoomUpperPost.userData.isWalkObstacle = true;
+        obstacles.push(endRoomUpperPost);
         endRoomUpperPost.castShadow = true;
         scene.add(endRoomUpperPost);
         addedRoomBeams.push(endRoomUpperPost);
@@ -838,6 +1447,8 @@ function buildClassroom() {
         );
         endSideTopRail.name = 'endSideTopRail';
         endSideTopRail.position.set(corridorCenterX, 1.02, endZ);
+        endSideTopRail.userData.isWalkObstacle = true;
+        obstacles.push(endSideTopRail);
         scene.add(endSideTopRail);
 
         const endSideGreenTube = new THREE.Mesh(
@@ -1720,7 +2331,7 @@ function setMode(mode) {
         camera = walkCamera;
 
         // Position player outside the front gate on the new small sidewalk
-        walkCamera.position.set(0, WALK_FLOOR_Y, -CLASS_LENGTH / 2 - 12); // Spawn well outside the building front
+        walkCamera.position.set(0, WALK_FLOOR_Y, CLASS_LENGTH / 2 + SINGLE_ROOM_LENGTH / 6); // Spawn inside the end add room
         walkCamera.rotation.set(0, Math.PI, 0); // Face towards the school (+Z)
 
         pointerLockControls.lock();
@@ -1883,6 +2494,94 @@ function updateWalkHUD() {
     }
 }
 
+function getBuildingFloorHeight(position) {
+    const classroomEdgeX = CLASS_WIDTH / 2;
+    const corridorOuterX = CLASS_WIDTH / 2 + 2.2;
+    const buildingMainEndZ = CLASS_LENGTH / 2;
+    // The attached room extends a full one-third classroom bay beyond the
+    // main corridor, not only to its center point.
+    const attachedRoomEndZ = buildingMainEndZ + SINGLE_ROOM_LENGTH / 3;
+
+    const inMainFloor = position.x >= -classroomEdgeX &&
+        position.x <= classroomEdgeX &&
+        Math.abs(position.z) <= buildingMainEndZ;
+    const inCorridorFloor = position.x >= classroomEdgeX - 0.05 &&
+        position.x <= corridorOuterX + 0.05 &&
+        Math.abs(position.z) <= attachedRoomEndZ;
+    const inFirstFloorAttachedRoom = position.y < CLASS_HEIGHT / 2 &&
+        position.x >= -classroomEdgeX &&
+        position.x <= classroomEdgeX &&
+        Math.abs(position.z) > buildingMainEndZ &&
+        Math.abs(position.z) <= attachedRoomEndZ;
+
+    if (!inMainFloor && !inCorridorFloor && !inFirstFloorAttachedRoom) return 0;
+
+    // Preserve the floor the player is currently standing on while walking
+    // across the corridor-side attached room.
+    const floorIndex = Math.max(0, Math.min(3,
+        Math.round((position.y - WALK_FLOOR_Y) / CLASS_HEIGHT)));
+    return floorIndex * CLASS_HEIGHT;
+}
+
+function getEndStairFloorHeight(position) {
+    const stairTopX = CLASS_WIDTH / 2 + 2.2 - 11.7;
+    const stairBottomX = stairTopX + 9.5;
+    const upperEndX = CLASS_WIDTH / 2 - 0.30;
+    const upperStairFillEndX = CLASS_WIDTH / 2 - 0.085;
+    const landingX = stairTopX + 4.75;
+    const stairBackOffset = 0.825;
+    const endRoomCenterZ = CLASS_LENGTH / 2 + SINGLE_ROOM_LENGTH / 6 + stairBackOffset;
+    const flightGap = 0.0;
+    const stairWidth = 2.10;
+    const flightOffsetZ = stairWidth / 2 + flightGap;
+    const stairWalkPadding = 0.30;
+    const stairHalfWidth = stairWidth / 2 + stairWalkPadding;
+    const upperLevel = CLASS_HEIGHT / 2;
+    const landingCenterX = landingX - 0.70;
+    const landingHalfX = 2.0 / 2 + stairWalkPadding;
+    const landingHalfZ = (stairWidth * 2 + flightGap * 2) / 2 + stairWalkPadding;
+
+    const inFlight = (zCenter) => Math.abs(position.z - zCenter) <= stairHalfWidth;
+
+    const getFloorForEnd = (endSide) => {
+        const stairCenterZ = endSide * endRoomCenterZ;
+        const lowerFlightZ = stairCenterZ + endSide * flightOffsetZ;
+        const upperFlightZ = stairCenterZ - endSide * flightOffsetZ;
+
+        // The middle landing is a walkable floor at the top of the first flight.
+        if (Math.abs(position.x - landingCenterX) <= landingHalfX &&
+            Math.abs(position.z - stairCenterZ) <= landingHalfZ) {
+            return upperLevel;
+        }
+
+        if (inFlight(lowerFlightZ) &&
+            position.x <= stairBottomX && position.x >= landingX) {
+            const progress = (stairBottomX - position.x) / (stairBottomX - landingX);
+            return progress * upperLevel;
+        }
+
+        if (inFlight(upperFlightZ) &&
+            position.x >= landingX && position.x <= upperEndX) {
+            const progress = (position.x - landingX) / (upperEndX - landingX);
+            return upperLevel + progress * upperLevel;
+        }
+
+        if (inFlight(upperFlightZ) &&
+            position.x > upperEndX && position.x <= upperStairFillEndX) {
+            return upperLevel * 2;
+        }
+
+        return null;
+    };
+
+    for (const endSide of [1, -1]) {
+        const floorY = getFloorForEnd(endSide);
+        if (floorY !== null) return floorY;
+    }
+
+    return 0;
+}
+
 function checkCollision(position) {
     const radius = 0.3; // Player radius
     const collisionStart = position.clone();
@@ -1952,6 +2651,14 @@ function checkCollision(position) {
             return Math.abs(position.z - doorWorldPosition.z) < 1.6 / 2 - radius;
         })()
     );
+    const openSideDoorAtPosition = doorMeshes.some((door) => {
+        if (!door.userData.isOpen || door.userData.openingAxis !== 'x') return false;
+        const openingX = door.userData.openingX;
+        const openingZ = door.userData.openingZ;
+        const openingWidth = door.userData.openingWidth ?? 1.5;
+        return Math.abs(position.x - openingX) < openingWidth / 2 - radius &&
+            Math.abs(position.z - openingZ) < 0.6;
+    });
     for (let obs of obstacles) {
         // The obstacles list is already the explicit list of solid model
         // parts. Open door panels are the only registered parts that must be
@@ -1965,6 +2672,24 @@ function checkCollision(position) {
         // this vertical check, cloned upper-floor walls would block the
         // first-floor player even though they are far above.
         if (box.max.y < position.y - 1.0 || box.min.y > position.y + 1.0) continue;
+
+        // The CR side door has a lintel above the opening. Once that door is
+        // open, do not let the lintel's AABB seal the doorway at eye height.
+        if (openSideDoorAtPosition) {
+            const openSideDoor = doorMeshes.find((door) =>
+                door.userData.isOpen && door.userData.openingAxis === 'x'
+            );
+            const openingX = openSideDoor?.userData.openingX;
+            const openingZ = openSideDoor?.userData.openingZ;
+            const openingWidth = openSideDoor?.userData.openingWidth ?? 1.5;
+            if (openingX !== undefined && openingZ !== undefined &&
+                box.min.x <= openingX + openingWidth / 2 &&
+                box.max.x >= openingX - openingWidth / 2 &&
+                box.min.z <= openingZ + 0.35 &&
+                box.max.z >= openingZ - 0.35) {
+                continue;
+            }
+        }
 
         // Leave the actual doorway clear while its door is open. This also
         // prevents cloned wall segments from sealing the opening.
@@ -2053,10 +2778,14 @@ function animate() {
             const newPos = checkCollision(position.clone());
             position.copy(newPos);
 
+            const stairFloorY = getEndStairFloorHeight(position);
+            const buildingFloorY = getBuildingFloorHeight(position);
+            const floorY = stairFloorY > 0 ? stairFloorY : buildingFloorY;
+            const targetEyeY = floorY + 1.6;
             jumpVelocity -= 16.0 * delta;
             position.y += jumpVelocity * delta;
-            if (position.y <= WALK_FLOOR_Y) {
-                position.y = WALK_FLOOR_Y;
+            if (position.y <= targetEyeY && jumpVelocity <= 0) {
+                position.y = targetEyeY;
                 jumpVelocity = 0;
                 canJump = true;
             }
