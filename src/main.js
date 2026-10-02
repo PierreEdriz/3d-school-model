@@ -118,12 +118,16 @@ function init() {
     liftBuildingStackToGround();
     createEndRoomStairToSecond();
     createUnderStairRooms();
-    createEndRoomBathrooms();
+    createEndRoomBathrooms(0, 'firstFloor');
+    createEndRoomBathrooms(CLASS_HEIGHT, 'secondFloor');
+    createEndRoomBathrooms(CLASS_HEIGHT * 2, 'thirdFloor');
+    createEndRoomBathrooms(CLASS_HEIGHT * 3, 'fourthFloor');
 }
 
 function createEndRoomStairToSecond() {
     const stairMat = new THREE.MeshStandardMaterial({
-        color: 0xb8b2a0,
+        // Match the finished structural post color.
+        color: 0xf5df9d,
         roughness: 0.95,
         metalness: 0.0
     });
@@ -149,16 +153,71 @@ function createEndRoomStairToSecond() {
     const flightOffsetZ = stairWidth / 2 + flightGap;
     const landingX = stairTopX + stairRun / 2;
     const addFlight = (startX, endX, baseY, z, prefix) => {
-        for (let i = 0; i < stepCount / 2; i++) {
+        // Use one thin sloped slab underneath the flight instead of stacking
+        // full-height blocks. The underside now follows the stair incline.
+        const flightRise = stepHeight * (stepCount / 2);
+        const flightRun = endX - startX;
+        const slabLength = Math.hypot(flightRun, flightRise);
+        const slabAngle = Math.atan2(flightRise, flightRun);
+        const stairSlab = new THREE.Mesh(
+            new THREE.BoxGeometry(slabLength, stairSlabThickness, stairWidth),
+            stairMat
+        );
+        stairSlab.position.set(
+            (startX + endX) / 2,
+            baseY + flightRise / 2 - stairSlabThickness * 1.5,
+            z
+        );
+        stairSlab.rotation.z = slabAngle;
+        stairSlab.name = `${prefix}SlopedUnderSlab`;
+        stairSlab.castShadow = true;
+        stairSlab.receiveShadow = true;
+        scene.add(stairSlab);
+
+        const flightStepCount = stepCount / 2;
+        const flightStepDepth = Math.abs(flightRun) / flightStepCount;
+        const flightDirection = Math.sign(flightRun) || 1;
+
+        // Close the open spaces between the treads while keeping the
+        // underside sloped. This makes the stair read as a solid stair
+        // profile instead of a row of floating thin plates.
+        const stairBodyShape = new THREE.Shape();
+        stairBodyShape.moveTo(startX, baseY + stepHeight - stairSlabThickness);
+        for (let i = 0; i < flightStepCount; i++) {
+            const stepEndX = startX + flightDirection * flightStepDepth * (i + 1);
+            const stepBottomY = baseY + stepHeight * (i + 1) - stairSlabThickness;
+            stairBodyShape.lineTo(stepEndX, stepBottomY);
+            if (i < flightStepCount - 1) {
+                stairBodyShape.lineTo(stepEndX, baseY + stepHeight * (i + 2) - stairSlabThickness);
+            }
+        }
+        stairBodyShape.lineTo(endX, baseY + flightRise - stairSlabThickness);
+        stairBodyShape.lineTo(startX, baseY - stairSlabThickness);
+        stairBodyShape.closePath();
+
+        const stairBody = new THREE.Mesh(
+            new THREE.ExtrudeGeometry(stairBodyShape, {
+                depth: stairWidth,
+                bevelEnabled: false
+            }),
+            stairMat
+        );
+        stairBody.position.z = z - stairWidth / 2;
+        stairBody.name = `${prefix}FilledStepBody`;
+        stairBody.castShadow = true;
+        stairBody.receiveShadow = true;
+        scene.add(stairBody);
+
+        for (let i = 0; i < flightStepCount; i++) {
             const stepHeightTotal = stepHeight * (i + 1);
             const step = new THREE.Mesh(
-                new THREE.BoxGeometry(stepDepth + 0.02, stepHeightTotal + stairSlabThickness, stairWidth),
+                new THREE.BoxGeometry(stepDepth + 0.02, stairSlabThickness, stairWidth),
                 stairMat
             );
             const t = (i + 0.5) / (stepCount / 2);
             step.position.set(
                 startX + (endX - startX) * t,
-                baseY + stepHeightTotal / 2 - stairSlabThickness / 2,
+                baseY + stepHeightTotal - stairSlabThickness / 2,
                 z
             );
             step.name = `${prefix}${i + 1}`;
@@ -168,86 +227,95 @@ function createEndRoomStairToSecond() {
         }
     };
 
-    const landingThickness = 0.14;
-    // Build the same switchback at both attached-room ends. Mirroring the
-    // Z position keeps both staircases aligned with their respective post line.
-    [1, -1].forEach((endSide) => {
-        const stairCenterZ = endSide * endRoomCenterZ;
-        const lowerFlightZ = stairCenterZ + endSide * flightOffsetZ;
-        const upperFlightZ = stairCenterZ - endSide * flightOffsetZ;
-        const sideName = endSide > 0 ? 'Positive' : 'Negative';
+    // Make the landing twice as thick as the individual stair treads.
+    const landingThickness = stairSlabThickness * 2;
+    const stairLevels = [
+        { baseY: 0, levelName: 'FirstToSecond' },
+        { baseY: CLASS_HEIGHT, levelName: 'SecondToThird' },
+        { baseY: CLASS_HEIGHT * 2, levelName: 'ThirdToFourth' }
+    ];
 
-        // First flight rises toward the middle landing.
-        addFlight(stairBottomX, landingX, 0, lowerFlightZ, `endRoom${sideName}LowerStairStep`);
+    stairLevels.forEach(({ baseY, levelName }) => {
+        // Build the same switchback at both attached-room ends. Mirroring the
+        // Z position keeps both staircases aligned with their respective post line.
+        [1, -1].forEach((endSide) => {
+            const stairCenterZ = endSide * endRoomCenterZ;
+            const lowerFlightZ = stairCenterZ + endSide * flightOffsetZ;
+            const upperFlightZ = stairCenterZ - endSide * flightOffsetZ;
+            const sideName = endSide > 0 ? 'Positive' : 'Negative';
 
-        const middleLanding = new THREE.Mesh(
-            new THREE.BoxGeometry(2.0, landingThickness, stairWidth * 2 + flightGap * 2),
-            stairMat
-        );
-        middleLanding.position.set(landingX - 0.70, CLASS_HEIGHT / 2 - landingThickness / 2, stairCenterZ);
-        middleLanding.name = `endRoom${sideName}StairMiddleLanding`;
-        middleLanding.castShadow = true;
-        middleLanding.receiveShadow = true;
-        scene.add(middleLanding);
+            // First flight rises toward the middle landing.
+            addFlight(stairBottomX, landingX, baseY, lowerFlightZ, `endRoom${sideName}${levelName}LowerStairStep`);
 
-        // Close the open space below the landing with a solid support that
-        // matches the landing footprint. This removes the visible gap and
-        // prevents the player from walking through the underside.
-        const landingSupportHeight = CLASS_HEIGHT / 2 - landingThickness;
-        const landingSupport = new THREE.Mesh(
-            new THREE.BoxGeometry(2.0, landingSupportHeight, stairWidth * 2 + flightGap * 2),
-            stairMat
-        );
-        landingSupport.position.set(
-            landingX - 0.70,
-            landingSupportHeight / 2,
-            stairCenterZ
-        );
-        landingSupport.name = `endRoom${sideName}StairLandingUnderfill`;
-        landingSupport.castShadow = true;
-        landingSupport.receiveShadow = true;
-        landingSupport.userData.isWalkObstacle = true;
-        obstacles.push(landingSupport);
-        scene.add(landingSupport);
-
-        // Second flight reverses direction, forming the U-shaped switchback.
-        addFlight(landingX, upperEndX, CLASS_HEIGHT / 2, upperFlightZ, `endRoom${sideName}UpperStairStep`);
-
-        // Fill the short trimmed section up to the recessed door/frame line.
-        const upperStepCount = stepCount / 2;
-        const lastUpperStepCenter = landingX +
-            (upperEndX - landingX) * ((upperStepCount - 0.5) / upperStepCount);
-        const lastUpperStepEdge = lastUpperStepCenter + (stepDepth + 0.02) / 2;
-        const upperStairFillEndX = CLASS_WIDTH / 2 - 0.085;
-        const upperStairFillWidth = upperStairFillEndX - lastUpperStepEdge;
-        if (upperStairFillWidth > 0) {
-            const fillHeight = CLASS_HEIGHT / 2 + stairSlabThickness;
-            const stairEndFill = new THREE.Mesh(
-                new THREE.BoxGeometry(upperStairFillWidth, fillHeight, stairWidth),
+            const middleLanding = new THREE.Mesh(
+                new THREE.BoxGeometry(2.0, landingThickness, stairWidth * 2 + flightGap * 2),
                 stairMat
             );
-            stairEndFill.position.set(
-                lastUpperStepEdge + upperStairFillWidth / 2,
-                CLASS_HEIGHT / 2 + CLASS_HEIGHT / 4 - stairSlabThickness / 2,
-                upperFlightZ
-            );
-            stairEndFill.name = `endRoom${sideName}UpperStairEndFill`;
-            stairEndFill.castShadow = true;
-            stairEndFill.receiveShadow = true;
-            scene.add(stairEndFill);
-        }
+            middleLanding.position.set(landingX - 0.70, baseY + CLASS_HEIGHT / 2 - landingThickness / 2, stairCenterZ);
+            middleLanding.name = `endRoom${sideName}${levelName}StairMiddleLanding`;
+            middleLanding.castShadow = true;
+            middleLanding.receiveShadow = true;
+            scene.add(middleLanding);
+
+            // Keep the lower landing filled as before. The 2nd-to-3rd-floor
+            // landing stays as a thin slab with an open underside, so it does
+            // not become a large solid block in the upper stairwell.
+            if (baseY === 0) {
+                const landingSupportHeight = CLASS_HEIGHT / 2 - landingThickness;
+                const landingSupport = new THREE.Mesh(
+                    new THREE.BoxGeometry(2.0, landingSupportHeight, stairWidth * 2 + flightGap * 2),
+                    stairMat
+                );
+                landingSupport.position.set(
+                    landingX - 0.70,
+                    baseY + landingSupportHeight / 2,
+                    stairCenterZ
+                );
+                landingSupport.name = `endRoom${sideName}${levelName}StairLandingUnderfill`;
+                landingSupport.castShadow = true;
+                landingSupport.receiveShadow = true;
+                landingSupport.userData.isWalkObstacle = true;
+                landingSupport.userData.isStairLandingUnderfill = true;
+                obstacles.push(landingSupport);
+                scene.add(landingSupport);
+            }
+
+            // Second flight reverses direction, forming the U-shaped switchback.
+            addFlight(landingX, upperEndX, baseY + CLASS_HEIGHT / 2, upperFlightZ, `endRoom${sideName}${levelName}UpperStairStep`);
+
+            // Close the short horizontal gap between the last upper step and
+            // the wall line with a thin cap, not a full-height end panel.
+            const upperStairCapEndX = CLASS_WIDTH / 2 - 0.085;
+            const upperStairCapWidth = upperStairCapEndX - upperEndX;
+            if (upperStairCapWidth > 0) {
+                const upperStairCap = new THREE.Mesh(
+                    new THREE.BoxGeometry(upperStairCapWidth, stairSlabThickness, stairWidth),
+                    stairMat
+                );
+                upperStairCap.position.set(
+                    upperEndX + upperStairCapWidth / 2,
+                    baseY + CLASS_HEIGHT - stairSlabThickness / 2,
+                    upperFlightZ
+                );
+                upperStairCap.name = `endRoom${sideName}${levelName}UpperStairEndCap`;
+                upperStairCap.castShadow = true;
+                upperStairCap.receiveShadow = true;
+                scene.add(upperStairCap);
+            }
+
+        });
     });
 }
 
 function createUnderStairRooms() {
     const wallMat = new THREE.MeshStandardMaterial({
-        color: 0xb8b2a0,
+        color: 0xf5df9d,
         roughness: 0.85,
         metalness: 0.0,
         side: THREE.DoubleSide
     });
     const floorMat = new THREE.MeshStandardMaterial({
-        color: 0xb8b2a0,
+        color: 0xf5df9d,
         roughness: 0.95,
         metalness: 0.0,
         side: THREE.DoubleSide
@@ -261,7 +329,9 @@ function createUnderStairRooms() {
     const stairTopX = CLASS_WIDTH / 2 + 2.2 - 11.7;
     const stairRun = 9.5;
     const landingX = stairTopX + stairRun / 2;
+    const upperEndX = CLASS_WIDTH / 2 - 0.30;
     const stairWidth = 2.10;
+    const stairSlabThickness = 0.12;
     const flightOffsetZ = stairWidth / 2;
     const roomMinX = landingX;
     const roomMaxX = CLASS_WIDTH / 2;
@@ -270,6 +340,9 @@ function createUnderStairRooms() {
     const roomDepth = stairWidth;
     // Keep the room walls below the underside of the first upper step.
     const roomHeight = CLASS_HEIGHT / 2 - 0.12;
+    // Keep first-floor room infill below the second-floor slab so it cannot
+    // protrude into the level above.
+    const firstFloorRoomTop = CLASS_HEIGHT - 0.18;
     const doorWidth = 1.5;
     const doorHeight = 2.5;
     const doorFrameHeight = doorHeight + 0.1;
@@ -314,6 +387,42 @@ function createUnderStairRooms() {
             );
         });
 
+        // Fill the first-floor room up to the underside of the upper flight.
+        // The top follows the stair slope instead of leaving a triangular gap.
+        const underStairFillShape = new THREE.Shape();
+        const fillStartX = roomMinX;
+        const fillEndX = roomMaxX;
+        const upperFlightTopAtStart = CLASS_HEIGHT / 2 - stairSlabThickness;
+        const upperFlightTopAtEnd = firstFloorRoomTop;
+        underStairFillShape.moveTo(fillStartX, roomHeight);
+        underStairFillShape.lineTo(fillEndX, roomHeight);
+        underStairFillShape.lineTo(fillEndX, upperFlightTopAtEnd);
+        underStairFillShape.lineTo(upperEndX, upperFlightTopAtEnd);
+        underStairFillShape.lineTo(fillStartX, upperFlightTopAtStart);
+        underStairFillShape.closePath();
+        // Keep the doorway clear through the filled area. Two side pieces
+        // preserve the first-floor room fill without putting a wall behind
+        // the door opening.
+        const gapFillSideDepth = (roomDepth - doorWidth) / 2;
+        [-1, 1].forEach((zSide) => {
+            const underStairGapFill = new THREE.Mesh(
+                new THREE.ExtrudeGeometry(underStairFillShape, {
+                    depth: gapFillSideDepth,
+                    bevelEnabled: false
+                }),
+                wallMat
+            );
+            underStairGapFill.position.set(
+                0,
+                0,
+                centerZ + zSide * (doorWidth / 2 + gapFillSideDepth / 2) - gapFillSideDepth / 2
+            );
+            underStairGapFill.name = `underStairRoomSlopedGapFill${endSide > 0 ? 'Positive' : 'Negative'}${zSide > 0 ? 'Outer' : 'Inner'}`;
+            underStairGapFill.castShadow = true;
+            underStairGapFill.receiveShadow = true;
+            scene.add(underStairGapFill);
+        });
+
         // Corridor-side wall with a centered door opening.
         const sideWallLength = (roomDepth - doorWidth) / 2;
         [-1, 1].forEach((zSide) => {
@@ -333,16 +442,15 @@ function createUnderStairRooms() {
             `underStairRoomDoorLintel${endSide > 0 ? 'Positive' : 'Negative'}`
         );
 
-        // Close the open strip above the door frame all the way to the slab.
-        // Without this infill, the space from the lintel to the upper stair
-        // reads as a dark gap when viewed from the corridor.
-        const doorAboveHeight = CLASS_HEIGHT - doorFrameHeight;
-        if (doorAboveHeight > 0) {
+        // Fill only the exact first-floor gap above the doorway. Keep the
+        // fill door-width so it does not become a large blocking wall.
+        const doorGapFillHeight = Math.max(0, firstFloorRoomTop - doorFrameHeight);
+        if (doorGapFillHeight > 0) {
             addSolidWall(
-                new THREE.BoxGeometry(wallThickness, doorAboveHeight, roomDepth),
+                new THREE.BoxGeometry(wallThickness, doorGapFillHeight, doorWidth),
                 new THREE.Vector3(
                     roomMaxX - wallThickness / 2,
-                    doorFrameHeight + doorAboveHeight / 2,
+                    doorFrameHeight + doorGapFillHeight / 2,
                     centerZ
                 ),
                 `underStairRoomDoorAboveFill${endSide > 0 ? 'Positive' : 'Negative'}`
@@ -447,15 +555,21 @@ function createUnderStairRooms() {
     });
 }
 
-function createEndRoomBathrooms() {
+function createEndRoomBathrooms(baseY = 0, floorGroupName = 'firstFloor') {
     const wallMat = new THREE.MeshStandardMaterial({
         color: 0xeedcb0,
         roughness: 0.85,
         metalness: 0.0,
         side: THREE.DoubleSide
     });
+    const interiorWallMat = new THREE.MeshStandardMaterial({
+        color: 0xf5df9d,
+        roughness: 0.85,
+        metalness: 0.0,
+        side: THREE.DoubleSide
+    });
     const floorMat = new THREE.MeshStandardMaterial({
-        color: 0xb8b2a0,
+        color: 0xf5df9d,
         roughness: 0.95,
         metalness: 0.0,
         side: THREE.DoubleSide
@@ -483,6 +597,8 @@ function createEndRoomBathrooms() {
     // Match the CR exactly to the combined width of the two stair flights.
     const bathroomDepth = stairWidth * 2;
     const bathroomCenterZ = CLASS_LENGTH / 2 + endRoomLength / 2 + 0.825;
+    const endRoomFloorThickness = 0.10;
+    const endRoomFloorTop = 0.06;
 
     const addSolid = (geometry, position, material, name) => {
         const mesh = new THREE.Mesh(geometry, material);
@@ -502,24 +618,86 @@ function createEndRoomBathrooms() {
         const innerZ = centerZ - endSide * (bathroomDepth / 2);
         const outerZ = centerZ + endSide * (bathroomDepth / 2);
 
-        // Keep the original first-floor outer wall aligned with the CR edge.
-        const firstFloor = scene.getObjectByName('firstFloor');
+        // Keep the selected floor's outer wall aligned with the CR edge.
+        const floorGroup = scene.getObjectByName(floorGroupName);
         const outerWallName = `endRoomOuterWall${sideName}`;
         const originalOuterWalls = [];
-        firstFloor?.traverse((part) => {
-            if (part.name === outerWallName) originalOuterWalls.push(part);
-        });
+        if (floorGroup) {
+            floorGroup.traverse((part) => {
+                if (part.name === outerWallName) originalOuterWalls.push(part);
+            });
+        } else if (baseY === CLASS_HEIGHT * 3) {
+            // The 4th floor is the original source geometry, which is a
+            // direct scene child rather than a cloned floor group.
+            scene.children.forEach((part) => {
+                if (part.parent === scene && part.name === outerWallName &&
+                    Math.abs(part.position.y - (baseY + CLASS_HEIGHT / 2)) < 0.05) {
+                    originalOuterWalls.push(part);
+                }
+            });
+        }
         originalOuterWalls.forEach((part) => {
             part.parent?.remove(part);
             const obstacleIndex = obstacles.indexOf(part);
             if (obstacleIndex !== -1) obstacles.splice(obstacleIndex, 1);
         });
 
+        // Add the upper-floor slab around the stair footprint. The center
+        // opening is deliberately left clear so the stair flights remain
+        // visible and walkable.
+        if (baseY > 0) {
+            const floorMinX = -CLASS_WIDTH / 2;
+            const floorMaxX = CLASS_WIDTH / 2;
+            const floorMinZ = Math.min(
+                endSide * (CLASS_LENGTH / 2),
+                endSide * (CLASS_LENGTH / 2 + endRoomLength)
+            );
+            const floorMaxZ = Math.max(
+                endSide * (CLASS_LENGTH / 2),
+                endSide * (CLASS_LENGTH / 2 + endRoomLength)
+            );
+            const stairOpeningMinX = stairTopX;
+            const stairOpeningMaxX = CLASS_WIDTH / 2 - 0.085;
+            const stairOpeningMinZ = centerZ - stairWidth;
+            const stairOpeningMaxZ = centerZ + stairWidth;
+            const addFloorPiece = (minX, maxX, minZ, maxZ, suffix) => {
+                const width = maxX - minX;
+                const depth = maxZ - minZ;
+                if (width <= 0 || depth <= 0) return;
+                const floorPiece = new THREE.Mesh(
+                    new THREE.BoxGeometry(width, endRoomFloorThickness, depth),
+                    floorMat
+                );
+                floorPiece.position.set(
+                    (minX + maxX) / 2,
+                    baseY + endRoomFloorTop - endRoomFloorThickness / 2,
+                    (minZ + maxZ) / 2
+                );
+                floorPiece.name = `endRoomBathroomHallwayFloor${sideName}${suffix}`;
+                floorPiece.receiveShadow = true;
+                scene.add(floorPiece);
+            };
+
+            // Side strips beside the stair opening.
+            addFloorPiece(floorMinX, stairOpeningMinX, floorMinZ, floorMaxZ, 'Left');
+            addFloorPiece(stairOpeningMaxX, floorMaxX, floorMinZ, floorMaxZ, 'Right');
+
+            // End strips before and after the switchback footprint.
+            const openingMinX = Math.max(floorMinX, stairOpeningMinX);
+            const openingMaxX = Math.min(floorMaxX, stairOpeningMaxX);
+            addFloorPiece(openingMinX, openingMaxX, floorMinZ, stairOpeningMinZ, 'Near');
+            addFloorPiece(openingMinX, openingMaxX, stairOpeningMaxZ, floorMaxZ, 'Far');
+        }
+
         const bathroomFloor = new THREE.Mesh(
-            new THREE.BoxGeometry(bathroomWidth, 0.06, bathroomDepth),
+            new THREE.BoxGeometry(bathroomWidth, endRoomFloorThickness, bathroomDepth),
             floorMat
         );
-        bathroomFloor.position.set((bathroomMinX + bathroomMaxX) / 2, 0.03, centerZ);
+        bathroomFloor.position.set(
+            (bathroomMinX + bathroomMaxX) / 2,
+            baseY + endRoomFloorTop - endRoomFloorThickness / 2,
+            centerZ
+        );
         bathroomFloor.name = `endRoomBathroomFloor${sideName}`;
         bathroomFloor.receiveShadow = true;
         scene.add(bathroomFloor);
@@ -532,7 +710,7 @@ function createEndRoomBathrooms() {
         );
         bathroomCeiling.position.set(
             (bathroomMinX + bathroomMaxX) / 2,
-            CLASS_HEIGHT - 0.04,
+            baseY + CLASS_HEIGHT - 0.04,
             centerZ
         );
         bathroomCeiling.name = `endRoomBathroomCeiling${sideName}`;
@@ -553,10 +731,10 @@ function createEndRoomBathrooms() {
                 new THREE.BoxGeometry(bathroomDoorSideWidth, CLASS_HEIGHT, wallThickness),
                 new THREE.Vector3(
                     bathroomDoorCenterX + xSide * (bathroomDoorWidth / 2 + bathroomDoorSideWidth / 2),
-                    CLASS_HEIGHT / 2,
+                    baseY + CLASS_HEIGHT / 2,
                     innerWallZ
                 ),
-                wallMat,
+                interiorWallMat,
                 `endRoomBathroomBackWall${sideName}${xSide > 0 ? 'Right' : 'Left'}`
             );
         });
@@ -564,10 +742,10 @@ function createEndRoomBathrooms() {
             new THREE.BoxGeometry(bathroomDoorWidth, CLASS_HEIGHT - bathroomDoorHeight, wallThickness),
             new THREE.Vector3(
                 bathroomDoorCenterX,
-                bathroomDoorHeight + (CLASS_HEIGHT - bathroomDoorHeight) / 2,
+                baseY + bathroomDoorHeight + (CLASS_HEIGHT - bathroomDoorHeight) / 2,
                 innerWallZ
             ),
-            wallMat,
+            interiorWallMat,
             `endRoomBathroomDoorLintel${sideName}`
         );
 
@@ -576,7 +754,7 @@ function createEndRoomBathrooms() {
         const bathroomDoorGroup = new THREE.Group();
         // Put the group origin on the left hinge, matching the classroom door
         // setup so opening rotates from the side instead of the center.
-        bathroomDoorGroup.position.set(bathroomDoorCenterX - bathroomDoorWidth / 2, 0, innerWallZ);
+        bathroomDoorGroup.position.set(bathroomDoorCenterX - bathroomDoorWidth / 2, baseY, innerWallZ);
         bathroomDoorGroup.userData = {
             isOpen: false,
             openType: 'rotate',
@@ -690,16 +868,16 @@ function createEndRoomBathrooms() {
         // Classroom-side wall.
         addSolid(
             new THREE.BoxGeometry(wallThickness, CLASS_HEIGHT, bathroomDepth),
-            new THREE.Vector3(bathroomMinX + wallThickness / 2, CLASS_HEIGHT / 2, centerZ),
-            wallMat,
+            new THREE.Vector3(bathroomMinX + wallThickness / 2, baseY + CLASS_HEIGHT / 2, centerZ),
+            interiorWallMat,
             `endRoomBathroomSideWall${sideName}`
         );
 
         // Solid wall facing the stair landing; no opening is left here.
         addSolid(
             new THREE.BoxGeometry(wallThickness, CLASS_HEIGHT, bathroomDepth),
-            new THREE.Vector3(bathroomMaxX - wallThickness / 2, CLASS_HEIGHT / 2, centerZ),
-            wallMat,
+            new THREE.Vector3(bathroomMaxX - wallThickness / 2, baseY + CLASS_HEIGHT / 2, centerZ),
+            interiorWallMat,
             `endRoomBathroomLandingWall${sideName}`
         );
 
@@ -708,7 +886,7 @@ function createEndRoomBathrooms() {
             new THREE.BoxGeometry(CLASS_WIDTH, CLASS_HEIGHT, 0.18),
             new THREE.Vector3(
                 0,
-                CLASS_HEIGHT / 2,
+                baseY + CLASS_HEIGHT / 2,
                 outerZ
             ),
             wallMat,
@@ -813,7 +991,7 @@ function createFirstFloor() {
             // Match the room walking surface to the corridor box top.
             part.position.y = 0.06;
             part.material = part.material.clone();
-            part.material.color.set(0xb8b2a0);
+            part.material.color.set(0xf5df9d);
             return;
         }
         if (params?.width === 0.4 && params?.height === CLASS_HEIGHT && params?.depth === 0.4) {
@@ -825,7 +1003,7 @@ function createFirstFloor() {
     // Restore the two first-floor add-room floors now that the large slab is
     // removed. They meet the corridor edge and use the same finish/color.
     const firstFloorEndRoomMat = new THREE.MeshStandardMaterial({
-        color: 0xb8b2a0,
+        color: 0xf5df9d,
         roughness: 0.9,
         metalness: 0.0,
         side: THREE.DoubleSide
@@ -867,7 +1045,7 @@ function addEndRoomFloors(floorName) {
     if (!floorGroup) return;
 
     const endRoomLength = SINGLE_ROOM_LENGTH / 3;
-    const floorMat = new THREE.MeshStandardMaterial({ color: 0x8a8d8f, roughness: 0.95, metalness: 0.0, side: THREE.DoubleSide });
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0xf5df9d, roughness: 0.95, metalness: 0.0, side: THREE.DoubleSide });
     [-1, 1].forEach((side) => {
         const endRoomFloor = new THREE.Mesh(
             new THREE.BoxGeometry(CLASS_WIDTH + 0.04, 0.06, endRoomLength),
@@ -880,7 +1058,7 @@ function addEndRoomFloors(floorName) {
 
         const floorBridge = new THREE.Mesh(
             new THREE.BoxGeometry(0.18, 0.06, endRoomLength - 0.18),
-            new THREE.MeshStandardMaterial({ color: 0xb8b2a0, roughness: 0.9, metalness: 0.0 })
+            new THREE.MeshStandardMaterial({ color: 0xf5df9d, roughness: 0.9, metalness: 0.0 })
         );
         floorBridge.position.set(CLASS_WIDTH / 2, 0, side * (CLASS_LENGTH / 2 + endRoomLength / 2));
         floorBridge.name = `${floorName}EndRoomFloorBridge`;
@@ -918,7 +1096,7 @@ function buildClassroom() {
     // Floor (Inside Classroom)
     const floorGeo = new THREE.PlaneGeometry(CLASS_WIDTH, CLASS_LENGTH);
     const floorMat = new THREE.MeshStandardMaterial({
-        color: 0x8a8d8f, // Grayish concrete plain cement
+        color: 0xf5df9d,
         roughness: 0.95, // Non-skid finish (very rough, matte)
         metalness: 0.0,
         side: THREE.DoubleSide
@@ -932,7 +1110,7 @@ function buildClassroom() {
     // Straight corridor running continuously along the classroom door side.
     const corridorCenterX = CLASS_WIDTH / 2 + 1.1;
     const corridorMat = new THREE.MeshStandardMaterial({
-        color: 0xb8b2a0,
+        color: 0xf5df9d,
         roughness: 0.9,
         metalness: 0.0
     });
@@ -2508,13 +2686,13 @@ function getBuildingFloorHeight(position) {
     const inCorridorFloor = position.x >= classroomEdgeX - 0.05 &&
         position.x <= corridorOuterX + 0.05 &&
         Math.abs(position.z) <= attachedRoomEndZ;
-    const inFirstFloorAttachedRoom = position.y < CLASS_HEIGHT / 2 &&
+    const inAttachedRoom =
         position.x >= -classroomEdgeX &&
         position.x <= classroomEdgeX &&
         Math.abs(position.z) > buildingMainEndZ &&
         Math.abs(position.z) <= attachedRoomEndZ;
 
-    if (!inMainFloor && !inCorridorFloor && !inFirstFloorAttachedRoom) return 0;
+    if (!inMainFloor && !inCorridorFloor && !inAttachedRoom) return 0;
 
     // Preserve the floor the player is currently standing on while walking
     // across the corridor-side attached room.
@@ -2543,7 +2721,7 @@ function getEndStairFloorHeight(position) {
 
     const inFlight = (zCenter) => Math.abs(position.z - zCenter) <= stairHalfWidth;
 
-    const getFloorForEnd = (endSide) => {
+    const getFloorForEnd = (endSide, baseY) => {
         const stairCenterZ = endSide * endRoomCenterZ;
         const lowerFlightZ = stairCenterZ + endSide * flightOffsetZ;
         const upperFlightZ = stairCenterZ - endSide * flightOffsetZ;
@@ -2551,33 +2729,52 @@ function getEndStairFloorHeight(position) {
         // The middle landing is a walkable floor at the top of the first flight.
         if (Math.abs(position.x - landingCenterX) <= landingHalfX &&
             Math.abs(position.z - stairCenterZ) <= landingHalfZ) {
-            return upperLevel;
+            return baseY + upperLevel;
         }
 
         if (inFlight(lowerFlightZ) &&
             position.x <= stairBottomX && position.x >= landingX) {
             const progress = (stairBottomX - position.x) / (stairBottomX - landingX);
-            return progress * upperLevel;
+            return baseY + progress * upperLevel;
         }
 
         if (inFlight(upperFlightZ) &&
             position.x >= landingX && position.x <= upperEndX) {
             const progress = (position.x - landingX) / (upperEndX - landingX);
-            return upperLevel + progress * upperLevel;
+            return baseY + upperLevel + progress * upperLevel;
         }
 
         if (inFlight(upperFlightZ) &&
             position.x > upperEndX && position.x <= upperStairFillEndX) {
-            return upperLevel * 2;
+            return baseY + upperLevel * 2;
         }
 
         return null;
     };
 
-    for (const endSide of [1, -1]) {
-        const floorY = getFloorForEnd(endSide);
-        if (floorY !== null) return floorY;
+    const candidates = [];
+    for (const baseY of [0, CLASS_HEIGHT, CLASS_HEIGHT * 2]) {
+        for (const endSide of [1, -1]) {
+            const floorY = getFloorForEnd(endSide, baseY);
+            if (floorY !== null) candidates.push({ floorY, baseY });
+        }
     }
+
+    // Both stair flights occupy the same X/Z footprint at different heights.
+    // Select the flight closest to the player's current eye level so the
+    // second-floor staircase does not snap back to the lower one.
+    const landingTieEyeY = WALK_FLOOR_Y + CLASS_HEIGHT / 2;
+    candidates.sort((a, b) => {
+        const distanceA = Math.abs((a.floorY + WALK_FLOOR_Y) - position.y);
+        const distanceB = Math.abs((b.floorY + WALK_FLOOR_Y) - position.y);
+        if (Math.abs(distanceA - distanceB) < 0.01) {
+            // At the exact shared landing footprint, use the camera height to
+            // choose lower vs. upper flight instead of always choosing floor 1.
+            return position.y > landingTieEyeY ? b.floorY - a.floorY : a.floorY - b.floorY;
+        }
+        return distanceA - distanceB;
+    });
+    if (candidates.length > 0) return candidates[0].floorY;
 
     return 0;
 }
@@ -2585,6 +2782,8 @@ function getEndStairFloorHeight(position) {
 function checkCollision(position) {
     const radius = 0.3; // Player radius
     const collisionStart = position.clone();
+    const stairFloorAtPosition = getEndStairFloorHeight(position);
+    const onStairFootprint = stairFloorAtPosition > 0;
 
     // Only the low hallway wall blocks crossing; railing/tubes remain non-solid.
     const hallwayWallX = CLASS_WIDTH / 2 + 2.2;
@@ -2664,6 +2863,7 @@ function checkCollision(position) {
         // parts. Open door panels are the only registered parts that must be
         // ignored while their door group is open.
         if (obs.parent?.userData?.isOpen) continue;
+        if (obs.userData.isStairLandingUnderfill && onStairFootprint) continue;
 
         // Simple AABB approximation
         const box = new THREE.Box3().setFromObject(obs);
