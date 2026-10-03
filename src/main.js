@@ -1519,6 +1519,220 @@ function createFirstFloor() {
         endRoomFloor.receiveShadow = true;
         firstFloor.add(endRoomFloor);
     });
+    // --- ADD PWD RAMPS AT END GAPS (SIDEWAYS) ---
+    const rampWidth = 2.0; 
+    const rampLength = 6.0; 
+    const rampHeight = 0.06;
+    const landingLength = 6.0;
+
+    const rampMat = new THREE.MeshStandardMaterial({ color: 0xf5df9d, roughness: 0.95, metalness: 0.0 });
+    const railMat = new THREE.MeshStandardMaterial({ color: 0x9dc359, roughness: 0.65, metalness: 0.15 });
+
+    const corridorOuterX = CLASS_WIDTH / 2 + 2.2;
+    const rampStartX = corridorOuterX; 
+    const rampCenterX = rampStartX + rampWidth / 2;
+
+    [ {zGap: -57, dir: 1}, {zGap: 57, dir: -1} ].forEach(({zGap, dir}) => {
+        // --- LANDING ---
+        const landingBase = new THREE.Mesh(new THREE.BoxGeometry(rampWidth, rampHeight, landingLength), rampMat);
+        landingBase.position.set(rampCenterX, rampHeight / 2, zGap);
+        landingBase.receiveShadow = true;
+        landingBase.castShadow = true;
+        firstFloor.add(landingBase);
+        obstacles.push(landingBase);
+
+        // --- RAMP ---
+        const rampBase = new THREE.Mesh(new THREE.BoxGeometry(rampWidth, rampHeight, rampLength), rampMat);
+        const rampCenterZ = zGap + dir * (landingLength / 2 + rampLength / 2);
+        
+        const tiltAngle = Math.atan2(rampHeight, rampLength);
+        rampBase.rotation.x = dir * tiltAngle; 
+        
+        rampBase.position.set(rampCenterX, 0.00, rampCenterZ);
+        rampBase.receiveShadow = true;
+        rampBase.castShadow = true;
+        firstFloor.add(rampBase);
+        obstacles.push(rampBase);
+
+        // --- RAILINGS ---
+        [rampWidth / 2 - 0.1].forEach((xOffset) => {
+            const sideX = rampCenterX + xOffset;
+            
+            // Horizontal rails
+            [0.9, 0.45].forEach((hHeight) => {
+                const r = (hHeight > 0.5) ? 0.04 : 0.02; // Match main corridor thickness
+                
+                // Landing Rail 
+                const lRail = new THREE.Mesh(new THREE.CylinderGeometry(r, r, landingLength, 12), railMat);
+                lRail.rotation.x = Math.PI / 2;
+                lRail.position.set(sideX, rampHeight + hHeight, zGap);
+                firstFloor.add(lRail);
+                obstacles.push(lRail);
+
+                // Ramp Rail 
+                const slopeLength = Math.sqrt(rampLength*rampLength + rampHeight*rampHeight);
+                const rRail = new THREE.Mesh(new THREE.CylinderGeometry(r, r, slopeLength, 12), railMat);
+                rRail.rotation.x = Math.PI / 2 + dir * tiltAngle; 
+                rRail.position.set(sideX, 0.03 + hHeight, rampCenterZ);
+                firstFloor.add(rRail);
+                obstacles.push(rRail);
+            });
+
+            // Vertical posts for landing
+            [-3, -2, -1, 0, 1, 2, 3].forEach((zOffset) => {
+                const postZ = zGap + zOffset;
+                const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.9, 12), railMat);
+                post.position.set(sideX, rampHeight + 0.45, postZ);
+                firstFloor.add(post);
+                obstacles.push(post);
+                obstacles.push(post);
+                
+                // Add sphere joint at the top of EVERY post
+                const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 12), railMat);
+                sphere.position.set(sideX, rampHeight + 0.9, postZ);
+                firstFloor.add(sphere);
+                obstacles.push(sphere);
+            });
+
+            // Vertical posts for ramp (skip -3 because landing already has one there)
+            [-2, -1, 0, 1, 2, 3].forEach((zOffset) => {
+                const postZ = rampCenterZ + dir * zOffset;
+                const baseY = 0.03 - dir * zOffset * (rampHeight / rampLength);
+                const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.9, 12), railMat);
+                post.position.set(sideX, baseY + 0.45, postZ);
+                firstFloor.add(post);
+                obstacles.push(post);
+                obstacles.push(post);
+                
+                // Add sphere joint at the top of EVERY post
+                const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 12), railMat);
+                sphere.position.set(sideX, baseY + 0.9, postZ);
+                firstFloor.add(sphere);
+                obstacles.push(sphere);
+            });
+            
+            // End railing (perpendicular) at the other end of the landing
+            if (xOffset === rampWidth / 2 - 0.1) {
+                const endZ = zGap - dir * (landingLength / 2);
+                [0.9, 0.45].forEach((hHeight) => {
+                    const r = (hHeight > 0.5) ? 0.04 : 0.02;
+                    // Stop exactly at the end posts centers to avoid protruding
+                    const endRailGeo = new THREE.CylinderGeometry(r, r, rampWidth - 0.2, 12);
+                    const endRail = new THREE.Mesh(endRailGeo, railMat);
+                    endRail.rotation.z = Math.PI / 2; // Runs along X axis
+                    endRail.position.set(rampCenterX, rampHeight + hHeight, endZ);
+                    endRail.castShadow = true;
+                    firstFloor.add(endRail);
+                    obstacles.push(endRail);
+                });
+                
+                // Add vertical posts along the end railing
+                [-0.9, 0, 0.9].forEach(xOff => {
+                    const endPost = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.9, 12), railMat);
+                    endPost.position.set(rampCenterX + xOff, rampHeight + 0.45, endZ);
+                    endPost.castShadow = true;
+                    firstFloor.add(endPost);
+                    obstacles.push(endPost);
+                    obstacles.push(endPost);
+                    
+                    // Sphere joint at the top
+                    const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 12), railMat);
+                    sphere.position.set(rampCenterX + xOff, rampHeight + 0.9, endZ);
+                    firstFloor.add(sphere);
+                obstacles.push(sphere);
+                });
+            }
+        });
+    });
+
+    // Create a middle entrance (butas sa gitna) in the corridor railing on the first floor
+    const corridorRailParts = ['corridorBalustrade', 'corridorTopRail', 'terraceGreenTube'];
+    const entranceWidth = 24.2; // 6 meter wide entrance in the middle
+    const centerPost = firstFloor.getObjectByName('corridorOuterPostCenter');
+    if (centerPost) {
+        centerPost.parent?.remove(centerPost);
+        const obstacleIndex = obstacles.indexOf(centerPost);
+        if (obstacleIndex !== -1) obstacles.splice(obstacleIndex, 1);
+    }
+
+    const centerTubeSupport1 = firstFloor.getObjectByName('corridorGreenTubeSupportCenter');
+    if (centerTubeSupport1) {
+        centerTubeSupport1.parent?.remove(centerTubeSupport1);
+    }
+    
+    const centerTubeSupport2 = firstFloor.getObjectByName('corridorCenterGreenTubeSupport');
+    if (centerTubeSupport2) {
+        centerTubeSupport2.parent?.remove(centerTubeSupport2);
+    }
+
+    // Remove the adjacent posts to widen the entrance
+    const postsToRemove = [];
+    firstFloor.traverse((part) => {
+        if (part.name === 'corridorOuterPost' || part.name === 'corridorGreenTubeSupport') {
+            if (Math.abs(part.position.z) > 5.0 && Math.abs(part.position.z) < 6.0) {
+                postsToRemove.push(part);
+            }
+        }
+    });
+    postsToRemove.forEach((part) => {
+        part.parent?.remove(part);
+        const obstacleIndex = obstacles.indexOf(part);
+        if (obstacleIndex !== -1) obstacles.splice(obstacleIndex, 1);
+    });
+
+    // Remove floating green uprights (visibleGreenUpright) in the middle gap
+    const greenUprightsToRemove = [];
+    firstFloor.traverse((part) => {
+        if (part.name === 'corridorGreenUpright') {
+            if (part.position.z > -12.2 && part.position.z < 12.2) {
+                greenUprightsToRemove.push(part);
+            }
+        }
+    });
+    greenUprightsToRemove.forEach(part => {
+        part.parent?.remove(part);
+        const obstacleIndex = obstacles.indexOf(part);
+        if (obstacleIndex !== -1) obstacles.splice(obstacleIndex, 1);
+    });
+
+
+    corridorRailParts.forEach((partName) => {
+        const part = firstFloor.getObjectByName(partName);
+        if (part) {
+            // Remove the original full-length part
+            part.parent?.remove(part);
+            const obstacleIndex = obstacles.indexOf(part);
+            if (obstacleIndex !== -1) obstacles.splice(obstacleIndex, 1);
+            
+            // Create two halves
+            const halfLength = (CLASS_LENGTH - entranceWidth) / 2;
+            const leftZ = -CLASS_LENGTH / 2 + halfLength / 2;
+            const rightZ = CLASS_LENGTH / 2 - halfLength / 2;
+
+            const partLeft = part.clone();
+            const partRight = part.clone();
+
+            if (partLeft.geometry.type === 'BoxGeometry') {
+                partLeft.geometry = new THREE.BoxGeometry(part.geometry.parameters.width, part.geometry.parameters.height, halfLength);
+                partRight.geometry = new THREE.BoxGeometry(part.geometry.parameters.width, part.geometry.parameters.height, halfLength);
+            } else if (partLeft.geometry.type === 'CylinderGeometry') {
+                // For terraceGreenTube, length is height parameter
+                partLeft.geometry = new THREE.CylinderGeometry(part.geometry.parameters.radiusTop, part.geometry.parameters.radiusBottom, halfLength, part.geometry.parameters.radialSegments);
+                partRight.geometry = new THREE.CylinderGeometry(part.geometry.parameters.radiusTop, part.geometry.parameters.radiusBottom, halfLength, part.geometry.parameters.radialSegments);
+            }
+
+            partLeft.position.z = leftZ;
+            partRight.position.z = rightZ;
+
+            firstFloor.add(partLeft);
+            firstFloor.add(partRight);
+            
+            if (part.userData.isWalkObstacle) {
+                obstacles.push(partLeft);
+                obstacles.push(partRight);
+            }
+        }
+    });
 
     // Keep the far-end first-floor side opening clear by removing its side barrier set.
     const endBarrierNames = new Set([
@@ -1567,6 +1781,8 @@ function addEndRoomFloors(floorName) {
     });
 }
 
+
+
 function liftBuildingStackToGround() {
     const firstFloorBaseY = 0.00;
 
@@ -1595,17 +1811,18 @@ function liftBuildingStackToGround() {
 function buildClassroom() {
     // Floor (Inside Classroom)
     const floorGeo = new THREE.PlaneGeometry(CLASS_WIDTH, CLASS_LENGTH);
-    const floorMat = new THREE.MeshStandardMaterial({
-        color: 0xf5df9d,
-        roughness: 0.95, // Non-skid finish (very rough, matte)
-        metalness: 0.0,
-        side: THREE.DoubleSide
-    });
-    const floor = new THREE.Mesh(floorGeo, floorMat);
-    floor.name = 'thirdFloorSource';
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    scene.add(floor);
+      const floorMat = new THREE.MeshStandardMaterial({
+          color: 0xf5df9d,
+          roughness: 0.95,
+          metalness: 0.0,
+          side: THREE.DoubleSide
+      });
+      const floor = new THREE.Mesh(floorGeo, floorMat);
+      floor.name = 'thirdFloorSource';
+      floor.rotation.x = -Math.PI / 2;
+      
+      floor.receiveShadow = true;
+      scene.add(floor);
 
     // Straight corridor running continuously along the classroom door side.
     const corridorCenterX = CLASS_WIDTH / 2 + 1.1;
@@ -3178,6 +3395,37 @@ function getBuildingFloorHeight(position) {
     return floorIndex * CLASS_HEIGHT;
 }
 
+function getPWDFloorHeight(position) {
+    const corridorOuterX = CLASS_WIDTH / 2 + 2.2;
+    const rampWidth = 2.0;
+    const rampHeight = 0.06;
+    const landingLength = 6.0;
+    const rampLength = 6.0;
+
+    if (position.x < corridorOuterX || position.x > corridorOuterX + rampWidth) return -1;
+
+    for (let i = 0; i < 2; i++) {
+        const dir = i === 0 ? 1 : -1;
+        const zGap = i === 0 ? -57 : 57;
+
+        // Landing
+        if (Math.abs(position.z - zGap) <= landingLength / 2) {
+            return rampHeight;
+        }
+
+        // Ramp
+        const startZ = zGap + dir * 3;
+        const endZ = zGap + dir * 9;
+        
+        if ((dir === 1 && position.z > startZ && position.z <= endZ) ||
+            (dir === -1 && position.z < startZ && position.z >= endZ)) {
+            const t = (position.z - startZ) / (endZ - startZ);
+            return rampHeight * (1 - t);
+        }
+    }
+    return -1;
+}
+
 function getEndStairFloorHeight(position) {
     const stairTopX = CLASS_WIDTH / 2 + 2.2 - 11.7;
     const stairBottomX = stairTopX + 9.5;
@@ -3268,9 +3516,16 @@ function checkCollision(position) {
     if (position.z > -CLASS_LENGTH / 2 && position.z < CLASS_LENGTH / 2 &&
         position.x > hallwayWallX - hallwayWallHalfThickness - radius &&
         position.x < hallwayWallX + hallwayWallHalfThickness + radius) {
-        position.x = position.x < hallwayWallX
-            ? hallwayWallX - hallwayWallHalfThickness - radius
-            : hallwayWallX + hallwayWallHalfThickness + radius;
+        
+        // Allow passage on the first floor in the middle (z between -3 and 3)
+        const isFirstFloor = position.y < 2.0;
+        const inMiddleGap = position.z > -12.1 && position.z < 12.1;
+        
+        if (!(isFirstFloor && inMiddleGap)) {
+            position.x = position.x < hallwayWallX
+                ? hallwayWallX - hallwayWallHalfThickness - radius
+                : hallwayWallX + hallwayWallHalfThickness + radius;
+        }
     }
 
     // World bounds
@@ -3457,7 +3712,8 @@ function animate() {
 
             const stairFloorY = getEndStairFloorHeight(position);
             const buildingFloorY = getBuildingFloorHeight(position);
-            const floorY = stairFloorY > 0 ? stairFloorY : buildingFloorY;
+            const pwdFloorY = getPWDFloorHeight(position);
+            const floorY = pwdFloorY >= 0 ? pwdFloorY : (stairFloorY > 0 ? stairFloorY : buildingFloorY);
             const targetEyeY = floorY + 1.6;
             jumpVelocity -= 16.0 * delta;
             position.y += jumpVelocity * delta;
