@@ -770,25 +770,13 @@ function createEndRoomStairToSecond() {
                     stairCenterZ,
                     `endRoom${sideName}FourthFloor`
                 );
-                // The opposite side of the top-floor opening is also exposed;
-                // add its matching guard so the stairwell is enclosed on both
-                // open edges.
-                addCrHallwayRailing(
-                    CLASS_HEIGHT * 3,
-                    endSide,
-                    stairCenterZ,
-                    `endRoom${sideName}FourthFloorOppositeEdge`,
-                    endSide
-                );
                 addFourthFloorOpeningEndGuard(
                     CLASS_HEIGHT * 3,
                     endSide,
                     stairCenterZ,
                     `endRoom${sideName}FourthFloor`
                 );
-
             }
-
         });
     });
 }
@@ -1804,6 +1792,7 @@ function liftBuildingStackToGround() {
             child.position.y = 0;
             return;
         }
+
         if (child.isMesh || child.isGroup) child.position.y += firstFloorBaseY + CLASS_HEIGHT * 3;
     });
 }
