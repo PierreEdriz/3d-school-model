@@ -16,7 +16,6 @@
         <div class="modes">
           <button id="btn-edit-mode" class="active">EDIT MODE</button>
           <button id="btn-view-mode">VIEW MODE</button>
-          <button id="btn-walk-mode">WALK MODE</button>
         </div>
 
       </div>
@@ -30,6 +29,39 @@
             <div style="padding: 10px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
               <input type="checkbox" id="chk-toggle-roof" checked style="width: 16px; height: 16px; cursor: pointer;">
               <label for="chk-toggle-roof" style="cursor: pointer; user-select: none;">Show Roof & Ceiling</label>
+            </div>
+            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="chk-toggle-chairs" style="width: 16px; height: 16px; cursor: pointer;">
+              <label for="chk-toggle-chairs" style="cursor: pointer; user-select: none;">Show Chairs</label>
+            </div>
+            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="chk-toggle-blackboards" checked style="width: 16px; height: 16px; cursor: pointer;">
+              <label for="chk-toggle-blackboards" style="cursor: pointer; user-select: none;">Show Blackboards</label>
+            </div>
+            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="chk-toggle-doors" checked style="width: 16px; height: 16px; cursor: pointer;">
+              <label for="chk-toggle-doors" style="cursor: pointer; user-select: none;">Show Doors</label>
+            </div>
+            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="chk-toggle-windows" checked style="width: 16px; height: 16px; cursor: pointer;">
+              <label for="chk-toggle-windows" style="cursor: pointer; user-select: none;">Show Windows</label>
+            </div>
+            <h4>Building Visibility</h4>
+            <div style="padding: 10px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="chk-building-left" checked style="width: 16px; height: 16px; cursor: pointer;">
+              <label for="chk-building-left" style="cursor: pointer; user-select: none;">Building Left</label>
+            </div>
+            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="chk-building-right" checked style="width: 16px; height: 16px; cursor: pointer;">
+              <label for="chk-building-right" style="cursor: pointer; user-select: none;">Building Right</label>
+            </div>
+            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="chk-building-back-left" checked style="width: 16px; height: 16px; cursor: pointer;">
+              <label for="chk-building-back-left" style="cursor: pointer; user-select: none;">Building Back Left</label>
+            </div>
+            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="chk-building-back-right" checked style="width: 16px; height: 16px; cursor: pointer;">
+              <label for="chk-building-back-right" style="cursor: pointer; user-select: none;">Building Back Right</label>
             </div>
           </div>
         </div>
@@ -64,15 +96,6 @@
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- Walk Mode HUD -->
-    <div id="walk-hud" style="display: none;">
-      <div class="crosshair">+</div>
-      <div class="interaction-prompt" id="interaction-prompt"></div>
-      <div class="controls-hint">
-        WASD: Move | Mouse: Look | Shift: Fast | E: Interact | ESC: Mouse Cursor
-
     </div>
 
     <script type="module" src="/src/main.js"></script>

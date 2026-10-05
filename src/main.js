@@ -1,33 +1,34 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
-import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls.js';
 
 import * as Factory from './components/factory.js';
 
 // Global State
 let scene, camera, renderer;
-let editCamera, walkCamera;
-let orbitControls, transformControls, pointerLockControls;
-let currentMode = 'EDIT'; // 'EDIT' or 'WALK'
+let editCamera;
+let orbitControls, transformControls;
+let currentMode = 'EDIT'; // 'EDIT' or 'VIEW'
 
-// Walk mode variables
+// Walk/View mode keyboard state
 let moveForward = false;
 let moveBackward = false;
 let moveLeft = false;
 let moveRight = false;
-let isSprinting = false;
-let jumpVelocity = 0;
-let canJump = true;
-let isSitting = false;
-let preSitPosition = new THREE.Vector3();
-const velocity = new THREE.Vector3();
-const direction = new THREE.Vector3();
 let prevTime = performance.now();
 
 // Classroom objects
 const objects = []; // Editable objects
-const obstacles = []; // Objects that block walking
+// Walk Mode and collision processing are disabled for performance. Keep the
+// registry API as a no-op so the existing model-generation code stays simple.
+const disabledWalkRegistry = {
+    push() {},
+    forEach() {},
+    includes() { return false; },
+    indexOf() { return -1; },
+    splice() {}
+};
+const obstacles = disabledWalkRegistry;
 let raycaster, mouse;
 let selectedObject = null;
 
@@ -36,11 +37,10 @@ const CLASS_WIDTH = 12;
 const SINGLE_ROOM_LENGTH = 18;
 const CLASS_LENGTH = SINGLE_ROOM_LENGTH * 6;
 const CLASS_HEIGHT = 3.5;
-const WALK_FLOOR_Y = 1.6;
 const WINDOW_WIDTH = 3.4;
 const WINDOW_OFFSET = 3.1;
 
-let doorMeshes = [];
+const doorMeshes = disabledWalkRegistry;
 
 // Shared security-device materials and small model helpers. These devices
 // are visual room details and are intentionally not added to obstacles.
@@ -280,16 +280,18 @@ function init() {
     editCamera = new THREE.PerspectiveCamera(60, aspect, 0.1, 1000);
     editCamera.position.set(0, 8, 12);
 
-    // Walk Camera
-    walkCamera = new THREE.PerspectiveCamera(75, aspect, 0.1, 1000);
-
     camera = editCamera;
 
     // Renderer
-    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer = new THREE.WebGLRenderer({
+        antialias: false,
+        powerPreference: 'high-performance'
+    });
     renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.shadowMap.enabled = true;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    // The scene does not use a shadow-casting light, so keeping the shadow
+    // map enabled only adds renderer overhead.
+    renderer.shadowMap.enabled = false;
     container.appendChild(renderer.domElement);
 
     // Lights
@@ -316,8 +318,6 @@ function init() {
     });
     scene.add(transformControls.getHelper());
 
-    pointerLockControls = new PointerLockControls(walkCamera, document.body);
-
     // Raycaster for selection
     raycaster = new THREE.Raycaster();
     mouse = new THREE.Vector2();
@@ -343,6 +343,9 @@ function init() {
     createEndRoomBathrooms(CLASS_HEIGHT, 'secondFloor');
     createEndRoomBathrooms(CLASS_HEIGHT * 2, 'thirdFloor');
     createEndRoomBathrooms(CLASS_HEIGHT * 3, 'fourthFloor');
+    createUShapedBuildingLayout();
+    applyComponentVisibilityToggles();
+    applyBuildingVisibilityToggles();
 }
 
 function createEndRoomStairToSecond() {
@@ -366,6 +369,7 @@ function createEndRoomStairToSecond() {
     const stairBottomX = stairTopX + stairRun;
     // Trim the gray upper-flight end so it clears the recessed door.
     const upperEndX = CLASS_WIDTH / 2 - 0.30;
+    const upperStairFillEndX = CLASS_WIDTH / 2 - 0.085;
     const stairBackOffset = 0.825;
     const endRoomCenterZ = CLASS_LENGTH / 2 + SINGLE_ROOM_LENGTH / 6 + stairBackOffset;
     // Keep the two flights as separate parallel meshes, but flush their edges
@@ -409,12 +413,9 @@ function createEndRoomStairToSecond() {
             part.receiveShadow = true;
             tubeGroup.add(part);
         });
-        // Treat the complete rounded tube as one walk obstacle so the
-        // cylinder and its end caps block the player together.
-        tubeGroup.userData.isWalkObstacle = true;
-        obstacles.push(tubeGroup);
         return tubeGroup;
     };
+    const addStairRegion = () => null;
     const addFlight = (startX, endX, baseY, z, prefix) => {
         // Use one thin sloped slab underneath the flight instead of stacking
         // full-height blocks. The underside now follows the stair incline.
@@ -440,6 +441,15 @@ function createEndRoomStairToSecond() {
         const flightStepCount = stepCount / 2;
         const flightStepDepth = Math.abs(flightRun) / flightStepCount;
         const flightDirection = Math.sign(flightRun) || 1;
+        addStairRegion(`${prefix}FloorRegion`, {
+            type: 'flight',
+            startX,
+            endX,
+            z,
+            baseY,
+            rise: flightRise,
+            halfWidth: stairWidth / 2
+        });
 
         // Close the open spaces between the treads while keeping the
         // underside sloped. This makes the stair read as a solid stair
@@ -682,6 +692,14 @@ function createEndRoomStairToSecond() {
             middleLanding.castShadow = true;
             middleLanding.receiveShadow = true;
             scene.add(middleLanding);
+            addStairRegion(`${sideName}${levelName}MiddleLandingFloorRegion`, {
+                type: 'landing',
+                minX: landingX - 0.70 - 1.0,
+                maxX: landingX - 0.70 + 1.0,
+                centerZ: stairCenterZ,
+                halfDepth: stairWidth + flightGap,
+                floorY: baseY + CLASS_HEIGHT / 2
+            });
             addLandingRailing(
                 baseY,
                 landingX - 0.70,
@@ -759,6 +777,14 @@ function createEndRoomStairToSecond() {
                 upperStairCap.receiveShadow = true;
                 scene.add(upperStairCap);
             }
+            addStairRegion(`${sideName}${levelName}UpperLandingFloorRegion`, {
+                type: 'landing',
+                minX: upperEndX,
+                maxX: upperStairFillEndX,
+                centerZ: upperFlightZ,
+                halfDepth: stairWidth / 2,
+                floorY: baseY + CLASS_HEIGHT
+            });
 
             // Guard the open fourth-floor hallway edge beside the top of the
             // stair. The lower levels already receive this guard from their
@@ -835,7 +861,7 @@ function createUnderStairRooms() {
     };
 
     // Mirror the under-stair room beneath the upper flight at both attached
-    // ends so the right and left sides have the same layout and collision.
+    // ends so the right and left sides have the same layout and alignment.
     [1, -1].forEach((endSide) => {
         const centerZ = endSide * roomCenterZ;
         const roomFloor = new THREE.Mesh(
@@ -940,7 +966,10 @@ function createUnderStairRooms() {
             // inward into the under-stair room instead of blocking the hall.
             openRot: -Math.PI / 2,
             closeRot: 0,
-            openingZ: centerZ
+            openingZ: centerZ,
+            openingAxis: 'z',
+            openingWidth: doorWidth,
+            openingLocal: { x: 0, y: 0, z: doorWidth / 2 }
         };
         const doorThickness = 0.05;
         const panelCenterY = doorHeight / 2;
@@ -1250,7 +1279,8 @@ function createEndRoomBathrooms(baseY = 0, floorGroupName = 'firstFloor') {
             openingZ: innerWallZ,
             openingAxis: 'x',
             openingX: bathroomDoorCenterX,
-            openingWidth: bathroomDoorWidth
+            openingWidth: bathroomDoorWidth,
+            openingLocal: { x: bathroomDoorWidth / 2, y: 0, z: 0 }
         };
         const bathroomDoorThickness = 0.06;
         const bathroomDoorPanel = new THREE.Group();
@@ -1388,13 +1418,6 @@ function createThirdFloor() {
     thirdFloor.name = 'thirdFloor';
     thirdFloor.position.y = -CLASS_HEIGHT;
 
-    // The 4th-floor obstacle registry is the collision source of truth.
-    // Mark every registered wall/structural blocker before cloning so the
-    // lower floors inherit exactly the same collision coverage.
-    obstacles.forEach((obstacle) => {
-        obstacle.userData.isWalkObstacle = true;
-    });
-
     // Move the exterior ground below the new lower floor so it is not buried.
     const groundPath = scene.getObjectByName('groundPath');
     const streetGround = scene.getObjectByName('streetGround');
@@ -1424,11 +1447,16 @@ function createThirdFloor() {
             if (part.isMesh) {
                 part.castShadow = child.castShadow;
                 part.receiveShadow = child.receiveShadow;
-                if (part.userData.isWalkObstacle) obstacles.push(part);
+            }
+            if ((part.isMesh || part.isGroup) && part.userData?.isWalkObstacle) {
+                addUniqueRegistryItem(obstacles, part);
+            }
+            if (part.userData?.isComponent) {
+                addUniqueRegistryItem(objects, part);
             }
             if (part.isGroup && part.userData?.openType) {
                 part.userData.isOpen = false;
-                doorMeshes.push(part);
+                addUniqueRegistryItem(doorMeshes, part);
             }
         });
         thirdFloor.add(duplicate);
@@ -1445,10 +1473,15 @@ function createSecondFloor() {
     secondFloor.name = 'secondFloor';
     secondFloor.position.y = -CLASS_HEIGHT * 2;
     secondFloor.traverse((part) => {
-        if (part.isMesh && part.userData.isWalkObstacle) obstacles.push(part);
+        if ((part.isMesh || part.isGroup) && part.userData?.isWalkObstacle) {
+            addUniqueRegistryItem(obstacles, part);
+        }
+        if (part.userData?.isComponent) {
+            addUniqueRegistryItem(objects, part);
+        }
         if (part.isGroup && part.userData?.openType) {
             part.userData.isOpen = false;
-            doorMeshes.push(part);
+            addUniqueRegistryItem(doorMeshes, part);
         }
     });
     scene.add(secondFloor);
@@ -1462,10 +1495,15 @@ function createFirstFloor() {
     firstFloor.name = 'firstFloor';
     firstFloor.position.y = -CLASS_HEIGHT * 3;
     firstFloor.traverse((part) => {
-        if (part.isMesh && part.userData.isWalkObstacle) obstacles.push(part);
+        if ((part.isMesh || part.isGroup) && part.userData?.isWalkObstacle) {
+            addUniqueRegistryItem(obstacles, part);
+        }
+        if (part.userData?.isComponent) {
+            addUniqueRegistryItem(objects, part);
+        }
         if (part.isGroup && part.userData?.openType) {
             part.userData.isOpen = false;
-            doorMeshes.push(part);
+            addUniqueRegistryItem(doorMeshes, part);
         }
     });
 
@@ -1767,6 +1805,118 @@ function addEndRoomFloors(floorName) {
         floorBridge.receiveShadow = true;
         floorGroup.add(floorBridge);
     });
+}
+
+function createUShapedBuildingLayout() {
+    if (scene.getObjectByName('buildingUnitLeft')) return;
+
+    const excludedNames = new Set(['groundPath', 'streetGround']);
+    const buildingParts = scene.children.slice().filter((child) => (
+        (child.isMesh || child.isGroup) &&
+        child !== transformControls?.getHelper() &&
+        !excludedNames.has(child.name)
+    ));
+    if (buildingParts.length === 0) return;
+
+    // Gather the finished building into one unit so every wall, floor, stair,
+    // door, railing, roof, ceiling, and room device is copied together.
+    const buildingUnit = new THREE.Group();
+    buildingUnit.name = 'buildingUnitLeft';
+    buildingParts.forEach((part) => buildingUnit.add(part));
+
+    const unitBounds = new THREE.Box3().setFromObject(buildingUnit);
+    const unitCenter = unitBounds.getCenter(new THREE.Vector3());
+    const unitSize = unitBounds.getSize(new THREE.Vector3());
+
+    // Put the unit origin at the footprint center so rotated copies pivot
+    // around their own center instead of swinging around the old origin.
+    buildingUnit.traverse((part) => {
+        if (part.parent !== buildingUnit) return;
+        part.position.x -= unitCenter.x;
+        part.position.z -= unitCenter.z;
+    });
+    scene.add(buildingUnit);
+
+    const buildingLength = Math.max(unitSize.x, unitSize.z);
+    const buildingWidth = Math.min(unitSize.x, unitSize.z);
+    // Use four full building copies to form one continuous U. The upper pair
+    // meet end-to-end at the center, while the side units sit at their ends.
+    const sideInset = Math.max(1.2, buildingWidth * 0.08);
+    // Triple the original clearance so every building has much more room
+    // between its neighboring copies while keeping the U layout aligned.
+    const buildingGap = Math.max(3, buildingWidth * 0.16) * 3;
+    // Pull the side units inside the upper ends so they do not protrude past
+    // the U's top corners.
+    const sideCenterX = buildingLength - buildingWidth / 2 + buildingGap / 2 - sideInset + 2;
+    const topCenterX = buildingLength / 2 + buildingGap / 2;
+    // Keep a small, consistent visual gap at the corners and between the
+    // upper pair instead of letting the copied buildings merge together.
+    const topCenterZ = buildingLength / 2 + buildingWidth / 2 + buildingGap / 2;
+
+    // Keep the original unit as the left side of the U.
+    buildingUnit.position.set(-sideCenterX, 0, 0);
+
+    const registerBuildingClone = (clone) => {
+        addUniqueRegistryItem(objects, clone);
+        clone.traverse((part) => {
+            if ((part.isMesh || part.isGroup) && part.userData?.isWalkObstacle) {
+                addUniqueRegistryItem(obstacles, part);
+            }
+            if (part.userData?.isComponent) {
+                addUniqueRegistryItem(objects, part);
+            }
+            if (part.isGroup && part.userData?.openType) {
+                part.userData.isOpen = false;
+                addUniqueRegistryItem(doorMeshes, part);
+            }
+            if (part.name === 'newRoof4' && window.roofGroups) {
+                window.roofGroups.push(part);
+            }
+            if (part.name === 'ceiling4Interior' && window.ceilingGroups) {
+                window.ceilingGroups.push(part);
+            }
+        });
+        scene.add(clone);
+    };
+
+    const cloneUnit = (name, x, z, rotationY = 0) => {
+        const clone = buildingUnit.clone(true);
+        clone.name = name;
+        clone.position.set(x, 0, z);
+        clone.rotation.y = rotationY;
+        registerBuildingClone(clone);
+        return clone;
+    };
+
+    // Rotate the right side so its corridor/openings face the courtyard.
+    cloneUnit('buildingUnitRight', sideCenterX, 0, Math.PI);
+    cloneUnit('buildingUnitTopLeft', -topCenterX, topCenterZ, Math.PI / 2);
+    cloneUnit('buildingUnitTopRight', topCenterX, topCenterZ, Math.PI / 2);
+
+    // Expand the shared ground planes so the four-unit U layout is not cut
+    // off at the old single-building boundary.
+    const layoutHalfWidth = Math.max(
+        sideCenterX + buildingWidth / 2,
+        topCenterX + buildingLength / 2
+    );
+    const layoutWidth = 2 * layoutHalfWidth;
+    const groundPath = scene.getObjectByName('groundPath');
+    const streetGround = scene.getObjectByName('streetGround');
+    if (groundPath?.geometry?.parameters?.width) {
+        groundPath.scale.x = Math.max(groundPath.scale.x, layoutWidth / groundPath.geometry.parameters.width);
+    }
+    if (streetGround?.geometry?.parameters?.width) {
+        streetGround.scale.x = Math.max(streetGround.scale.x, layoutWidth / streetGround.geometry.parameters.width);
+    }
+
+    // Frame the full U layout in the editor on startup.
+    if (editCamera && orbitControls) {
+        const viewDistance = Math.max(layoutWidth, topCenterZ + buildingWidth) * 1.05;
+        editCamera.position.set(viewDistance * 0.72, viewDistance * 0.58, viewDistance * 0.82);
+        orbitControls.target.set(0, CLASS_HEIGHT * 1.5, topCenterZ / 3);
+        orbitControls.update();
+    }
+
 }
 
 
@@ -2525,6 +2675,10 @@ function buildClassroom() {
     newRoofGroup.add(flatRoof);
 
     scene.add(newRoofGroup);
+    // The active roof is the replacement group above; expose it for the
+    // Components checkbox instead of the old removed roof group.
+    window.roofGroup = newRoofGroup;
+    window.roofGroups = [newRoofGroup];
 
     // Interior ceiling covering the classrooms and the full corridor.
     const interiorCeilingMat = new THREE.MeshBasicMaterial({
@@ -2545,6 +2699,8 @@ function buildClassroom() {
     interiorCeiling.castShadow = false;
     interiorCeiling.receiveShadow = true;
     scene.add(interiorCeiling);
+    window.ceilingGroup = interiorCeiling;
+    window.ceilingGroups = [interiorCeiling];
 
     // Walls (wallMat is now defined above)
 
@@ -2684,6 +2840,7 @@ function createPlasticDoor(width, height, thickness, colorHex, handleSide = 'lef
     }
 function createJalousieWindow(zCenter, width = 4, wallX = -CLASS_WIDTH / 2) {
         const group = new THREE.Group();
+        group.userData.type = 'window';
         group.position.set(wallX, 1.0, zCenter);
 
         // Vertical Aluminum Frames (Mullions)
@@ -2707,6 +2864,7 @@ function createJalousieWindow(zCenter, width = 4, wallX = -CLASS_WIDTH / 2) {
     }
 function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 2) {
         const group = new THREE.Group();
+        group.userData.type = 'window';
         group.position.set(wallX, 2.7, zCenter); // Base at y=2.7
 
         const numFrames = 3;
@@ -2920,7 +3078,16 @@ function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 
         const doorGeo = new THREE.BoxGeometry(0.1, doorHeight, doorWidth);
         const doorGroup1 = new THREE.Group();
         doorGroup1.position.set(CLASS_WIDTH / 2, 0, door1Z + doorWidth / 2);
-        doorGroup1.userData = { isOpen: false, openType: 'rotate', openRot: Math.PI / 2, closeRot: 0, openingZ: door1Z };
+        doorGroup1.userData = {
+            isOpen: false,
+            openType: 'rotate',
+            openRot: Math.PI / 2,
+            closeRot: 0,
+            openingZ: door1Z,
+            openingAxis: 'z',
+            openingWidth: doorWidth,
+            openingLocal: { x: 0, y: 0, z: -doorWidth / 2 }
+        };
         const dMesh1 = createPanelDoor(doorWidth, doorHeight, 0.05, doorMeshMat, 'left');
         dMesh1.position.set(0, doorHeight / 2, -doorWidth / 2);
         dMesh1.add(createDigitalLock(doorWidth, doorHeight, 0.05, 'left', 'z'));
@@ -2931,7 +3098,16 @@ function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 
 
         const doorGroup2 = new THREE.Group();
         doorGroup2.position.set(CLASS_WIDTH / 2, 0, door2Z - doorWidth / 2);
-        doorGroup2.userData = { isOpen: false, openType: 'rotate', openRot: -Math.PI / 2, closeRot: 0, openingZ: door2Z };
+        doorGroup2.userData = {
+            isOpen: false,
+            openType: 'rotate',
+            openRot: -Math.PI / 2,
+            closeRot: 0,
+            openingZ: door2Z,
+            openingAxis: 'z',
+            openingWidth: doorWidth,
+            openingLocal: { x: 0, y: 0, z: doorWidth / 2 }
+        };
         const dMesh2 = createPanelDoor(doorWidth, doorHeight, 0.05, doorMeshMat, 'right');
         dMesh2.position.set(0, doorHeight / 2, doorWidth / 2);
         dMesh2.add(createDigitalLock(doorWidth, doorHeight, 0.05, 'right', 'z'));
@@ -3035,21 +3211,19 @@ function generateSeatingForRoom(rows, cols, zCenter, zDir, rotY) {
     }
 }
 
+function addUniqueRegistryItem(registry, item) {
+    if (!registry.includes(item)) registry.push(item);
+}
+
 function addObj(obj) {
     scene.add(obj);
-    objects.push(obj);
-    if (obj.userData.isWalkObstacle) {
-        obstacles.push(obj);
-    }
+    addUniqueRegistryItem(objects, obj);
 }
 
 function removeObj(obj) {
     scene.remove(obj);
     const idx = objects.indexOf(obj);
     if (idx > -1) objects.splice(idx, 1);
-
-    const obsIdx = obstacles.indexOf(obj);
-    if (obsIdx > -1) obstacles.splice(obsIdx, 1);
 }
 
 function selectObject(obj) {
@@ -3097,23 +3271,130 @@ function updatePropertiesPanel() {
     document.getElementById('prop-rot-z').value = THREE.MathUtils.radToDeg(selectedObject.rotation.z).toFixed(0);
 }
 
+function setChairsVisibility(visible) {
+    scene.traverse((object) => {
+        if (object.userData?.type === 'studentChair' || object.userData?.type === 'teacherChair') {
+            object.visible = visible;
+        }
+    });
+}
+
+function setBlackboardsVisibility(visible) {
+    scene.traverse((object) => {
+        if (object.userData?.type === 'board') {
+            object.visible = visible;
+        }
+    });
+}
+
+function setDoorsVisibility(visible) {
+    scene.traverse((object) => {
+        if (object.userData?.openType) {
+            object.visible = visible;
+        }
+    });
+}
+
+function setWindowsVisibility(visible) {
+    scene.traverse((object) => {
+        if (object.userData?.type === 'window') {
+            object.visible = visible;
+        }
+    });
+}
+
+function applyComponentVisibilityToggles() {
+    const chairsToggle = document.getElementById('chk-toggle-chairs');
+    const blackboardsToggle = document.getElementById('chk-toggle-blackboards');
+    const doorsToggle = document.getElementById('chk-toggle-doors');
+    const windowsToggle = document.getElementById('chk-toggle-windows');
+    setChairsVisibility(chairsToggle ? chairsToggle.checked : false);
+    setBlackboardsVisibility(blackboardsToggle ? blackboardsToggle.checked : true);
+    setDoorsVisibility(doorsToggle ? doorsToggle.checked : true);
+    setWindowsVisibility(windowsToggle ? windowsToggle.checked : true);
+}
+
+function getBuildingVisibilityConfigs() {
+    return [
+        { id: 'chk-building-left', name: 'buildingUnitLeft' },
+        { id: 'chk-building-right', name: 'buildingUnitRight' },
+        { id: 'chk-building-back-left', name: 'buildingUnitTopLeft' },
+        { id: 'chk-building-back-right', name: 'buildingUnitTopRight' }
+    ];
+}
+
+function setBuildingVisibility(buildingName, visible) {
+    const building = scene.getObjectByName(buildingName);
+    if (building) building.visible = visible;
+}
+
+function applyBuildingVisibilityToggles() {
+    getBuildingVisibilityConfigs().forEach(({ id, name }) => {
+        const toggle = document.getElementById(id);
+        setBuildingVisibility(name, toggle ? toggle.checked : true);
+    });
+}
+
 function setupUI() {
     // Mode Buttons
     document.getElementById('btn-edit-mode').addEventListener('click', () => setMode('EDIT'));
     document.getElementById('btn-view-mode').addEventListener('click', () => setMode('VIEW'));
-    document.getElementById('btn-walk-mode').addEventListener('click', () => setMode('WALK'));
-    const exitBtn = document.getElementById('btn-exit-walk');
-    if (exitBtn) exitBtn.addEventListener('click', () => setMode('EDIT'));
 
     // Roof Toggle Checkbox
     const chkToggleRoof = document.getElementById('chk-toggle-roof');
     if (chkToggleRoof) {
+        const setRoofAndCeilingVisibility = (visible) => {
+            const roofGroups = window.roofGroups || (window.roofGroup ? [window.roofGroup] : []);
+            const ceilingGroups = window.ceilingGroups || (window.ceilingGroup ? [window.ceilingGroup] : []);
+            roofGroups.forEach((group) => { group.visible = visible; });
+            ceilingGroups.forEach((group) => { group.visible = visible; });
+        };
         chkToggleRoof.addEventListener('change', (e) => {
-            if (window.roofGroup) {
-                window.roofGroup.visible = e.target.checked;
-            }
+            setRoofAndCeilingVisibility(e.target.checked);
+        });
+        setRoofAndCeilingVisibility(chkToggleRoof.checked);
+    }
+
+    // Chairs Toggle
+    const chkToggleChairs = document.getElementById('chk-toggle-chairs');
+    if (chkToggleChairs) {
+        chkToggleChairs.addEventListener('change', (e) => {
+            setChairsVisibility(e.target.checked);
         });
     }
+
+    // Blackboards Toggle
+    const chkToggleBlackboards = document.getElementById('chk-toggle-blackboards');
+    if (chkToggleBlackboards) {
+        chkToggleBlackboards.addEventListener('change', (e) => {
+            setBlackboardsVisibility(e.target.checked);
+        });
+    }
+
+    // Doors Toggle
+    const chkToggleDoors = document.getElementById('chk-toggle-doors');
+    if (chkToggleDoors) {
+        chkToggleDoors.addEventListener('change', (e) => {
+            setDoorsVisibility(e.target.checked);
+        });
+    }
+
+    // Windows Toggle
+    const chkToggleWindows = document.getElementById('chk-toggle-windows');
+    if (chkToggleWindows) {
+        chkToggleWindows.addEventListener('change', (e) => {
+            setWindowsVisibility(e.target.checked);
+        });
+    }
+
+    // Building visibility toggles
+    getBuildingVisibilityConfigs().forEach(({ id, name }) => {
+        const toggle = document.getElementById(id);
+        if (!toggle) return;
+        toggle.addEventListener('change', (e) => {
+            setBuildingVisibility(name, e.target.checked);
+        });
+    });
 
     // Delete
     document.getElementById('btn-delete').addEventListener('click', () => {
@@ -3140,21 +3421,21 @@ function setupUI() {
 }
 
 function setMode(mode) {
+    if (mode !== 'EDIT' && mode !== 'VIEW') mode = 'EDIT';
     currentMode = mode;
     const btnEdit = document.getElementById('btn-edit-mode');
     const btnView = document.getElementById('btn-view-mode');
-    const btnWalk = document.getElementById('btn-walk-mode');
-    const walkHud = document.getElementById('walk-hud');
 
     btnEdit.classList.remove('active');
     btnView.classList.remove('active');
-    btnWalk.classList.remove('active');
+
+    moveForward = false;
+    moveBackward = false;
+    moveLeft = false;
+    moveRight = false;
 
     if (mode === 'EDIT') {
         btnEdit.classList.add('active');
-        walkHud.style.display = 'none';
-
-        pointerLockControls.unlock();
 
         camera = editCamera;
         orbitControls.enabled = true;
@@ -3165,9 +3446,6 @@ function setMode(mode) {
 
     } else if (mode === 'VIEW') {
         btnView.classList.add('active');
-        walkHud.style.display = 'none';
-
-        pointerLockControls.unlock();
 
         camera = editCamera;
         orbitControls.enabled = true;
@@ -3177,25 +3455,6 @@ function setMode(mode) {
         // Disable UI
         document.getElementById('left-sidebar').style.display = 'none';
         document.getElementById('right-sidebar').style.display = 'none';
-
-    } else if (mode === 'WALK') {
-        btnWalk.classList.add('active');
-        walkHud.style.display = 'block';
-
-        deselect();
-
-        // Disable UI
-        document.getElementById('left-sidebar').style.display = 'none';
-        document.getElementById('right-sidebar').style.display = 'none';
-
-        orbitControls.enabled = false;
-        camera = walkCamera;
-
-        // Position player outside the front gate on the new small sidewalk
-        walkCamera.position.set(0, WALK_FLOOR_Y, CLASS_LENGTH / 2 + SINGLE_ROOM_LENGTH / 6); // Spawn inside the end add room
-        walkCamera.rotation.set(0, Math.PI, 0); // Face towards the school (+Z)
-
-        pointerLockControls.lock();
     }
 
     onWindowResize();
@@ -3206,8 +3465,8 @@ function onWindowResize() {
     const width = container.clientWidth;
     const height = container.clientHeight;
 
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
+    editCamera.aspect = width / height;
+    editCamera.updateProjectionMatrix();
 
     renderer.setSize(width, height);
 }
@@ -3247,412 +3506,25 @@ function onKeyDown(event) {
                 }
                 break;
         }
-    } else if (currentMode === 'WALK' || currentMode === 'VIEW') {
+    } else if (currentMode === 'VIEW') {
         switch (event.code) {
             case 'KeyW': moveForward = true; break;
             case 'KeyA': moveLeft = true; break;
             case 'KeyS': moveBackward = true; break;
             case 'KeyD': moveRight = true; break;
-            case 'ShiftLeft': isSprinting = true; break;
-            case 'Space':
-                event.preventDefault();
-                if (canJump && !isSitting) {
-                    jumpVelocity = 5.5;
-                    canJump = false;
-                }
-                break;
-            case 'KeyE': interact(); break;
         }
     }
 }
 
 function onKeyUp(event) {
-    if (currentMode === 'WALK' || currentMode === 'VIEW') {
+    if (currentMode === 'VIEW') {
         switch (event.code) {
             case 'KeyW': moveForward = false; break;
             case 'KeyA': moveLeft = false; break;
             case 'KeyS': moveBackward = false; break;
             case 'KeyD': moveRight = false; break;
-            case 'ShiftLeft': isSprinting = false; break;
         }
     }
-}
-
-function interact() {
-    if (isSitting) {
-        // Stand up
-        isSitting = false;
-        walkCamera.position.copy(preSitPosition);
-        return;
-    }
-
-    // Check doors
-    let doorInteracted = false;
-    doorMeshes.forEach((door) => {
-        const doorWorldPosition = new THREE.Vector3();
-        (door.children[0] || door).getWorldPosition(doorWorldPosition);
-        doorWorldPosition.z = door.userData.openingZ ?? doorWorldPosition.z;
-        const dist = walkCamera.position.distanceTo(doorWorldPosition);
-        if (dist < 4.0) { // Increased interaction distance for large gates
-            door.userData.isOpen = !door.userData.isOpen;
-            doorInteracted = true;
-        }
-    });
-    if (doorInteracted) return;
-
-    // Check chairs
-    objects.forEach((obj) => {
-        if (obj.userData && (obj.userData.type === 'studentChair' || obj.userData.type === 'teacherChair')) {
-            const dist = Math.hypot(walkCamera.position.x - obj.position.x, walkCamera.position.z - obj.position.z);
-            if (dist < 1.5 && !isSitting) {
-                isSitting = true;
-                preSitPosition.copy(walkCamera.position);
-                walkCamera.position.set(obj.position.x, 1.1, obj.position.z);
-            }
-        }
-    });
-}
-
-function updateWalkHUD() {
-    if (currentMode !== 'WALK') return;
-    const prompt = document.getElementById('interaction-prompt');
-
-    if (isSitting) {
-        prompt.innerText = 'Press E to Stand Up';
-        return;
-    }
-
-    let canInteractDoor = false;
-    let anyOpen = false;
-
-    doorMeshes.forEach((door) => {
-        const doorWorldPosition = new THREE.Vector3();
-        (door.children[0] || door).getWorldPosition(doorWorldPosition);
-        doorWorldPosition.z = door.userData.openingZ ?? doorWorldPosition.z;
-        const dist = walkCamera.position.distanceTo(doorWorldPosition);
-        if (dist < 3.0) {
-            canInteractDoor = true;
-            if (door.userData.isOpen) anyOpen = true;
-        }
-    });
-
-    let canInteractChair = false;
-    objects.forEach((obj) => {
-        if (obj.userData && (obj.userData.type === 'studentChair' || obj.userData.type === 'teacherChair')) {
-            const dist = Math.hypot(walkCamera.position.x - obj.position.x, walkCamera.position.z - obj.position.z);
-            if (dist < 1.5) {
-                canInteractChair = true;
-            }
-        }
-    });
-
-    if (canInteractDoor) {
-        prompt.innerText = anyOpen ? 'Press E to Close Door' : 'Press E to Open Door';
-    } else if (canInteractChair) {
-        prompt.innerText = 'Press E to Sit Down';
-    } else {
-        prompt.innerText = '';
-    }
-}
-
-function getBuildingFloorHeight(position) {
-    const classroomEdgeX = CLASS_WIDTH / 2;
-    const corridorOuterX = CLASS_WIDTH / 2 + 2.2;
-    const buildingMainEndZ = CLASS_LENGTH / 2;
-    // The attached room extends a full one-third classroom bay beyond the
-    // main corridor, not only to its center point.
-    const attachedRoomEndZ = buildingMainEndZ + SINGLE_ROOM_LENGTH / 3;
-
-    const inMainFloor = position.x >= -classroomEdgeX &&
-        position.x <= classroomEdgeX &&
-        Math.abs(position.z) <= buildingMainEndZ;
-    const inCorridorFloor = position.x >= classroomEdgeX - 0.05 &&
-        position.x <= corridorOuterX + 0.05 &&
-        Math.abs(position.z) <= attachedRoomEndZ;
-    const inAttachedRoom =
-        position.x >= -classroomEdgeX &&
-        position.x <= classroomEdgeX &&
-        Math.abs(position.z) > buildingMainEndZ &&
-        Math.abs(position.z) <= attachedRoomEndZ;
-
-    if (!inMainFloor && !inCorridorFloor && !inAttachedRoom) return 0;
-
-    // Preserve the floor the player is currently standing on while walking
-    // across the corridor-side attached room.
-    const floorIndex = Math.max(0, Math.min(3,
-        Math.round((position.y - WALK_FLOOR_Y) / CLASS_HEIGHT)));
-    return floorIndex * CLASS_HEIGHT;
-}
-
-function getPWDFloorHeight(position) {
-    const corridorOuterX = CLASS_WIDTH / 2 + 2.2;
-    const rampWidth = 2.0;
-    const rampHeight = 0.06;
-    const landingLength = 6.0;
-    const rampLength = 6.0;
-
-    if (position.x < corridorOuterX || position.x > corridorOuterX + rampWidth) return -1;
-
-    for (let i = 0; i < 2; i++) {
-        const dir = i === 0 ? 1 : -1;
-        const zGap = i === 0 ? -57 : 57;
-
-        // Landing
-        if (Math.abs(position.z - zGap) <= landingLength / 2) {
-            return rampHeight;
-        }
-
-        // Ramp
-        const startZ = zGap + dir * 3;
-        const endZ = zGap + dir * 9;
-        
-        if ((dir === 1 && position.z > startZ && position.z <= endZ) ||
-            (dir === -1 && position.z < startZ && position.z >= endZ)) {
-            const t = (position.z - startZ) / (endZ - startZ);
-            return rampHeight * (1 - t);
-        }
-    }
-    return -1;
-}
-
-function getEndStairFloorHeight(position) {
-    const stairTopX = CLASS_WIDTH / 2 + 2.2 - 11.7;
-    const stairBottomX = stairTopX + 9.5;
-    const upperEndX = CLASS_WIDTH / 2 - 0.30;
-    const upperStairFillEndX = CLASS_WIDTH / 2 - 0.085;
-    const landingX = stairTopX + 4.75;
-    const stairBackOffset = 0.825;
-    const endRoomCenterZ = CLASS_LENGTH / 2 + SINGLE_ROOM_LENGTH / 6 + stairBackOffset;
-    const flightGap = 0.0;
-    const stairWidth = 2.10;
-    const flightOffsetZ = stairWidth / 2 + flightGap;
-    const stairWalkPadding = 0.30;
-    const stairHalfWidth = stairWidth / 2 + stairWalkPadding;
-    const upperLevel = CLASS_HEIGHT / 2;
-    const landingCenterX = landingX - 0.70;
-    const landingHalfX = 2.0 / 2 + stairWalkPadding;
-    const landingHalfZ = (stairWidth * 2 + flightGap * 2) / 2 + stairWalkPadding;
-
-    const inFlight = (zCenter) => Math.abs(position.z - zCenter) <= stairHalfWidth;
-
-    const getFloorForEnd = (endSide, baseY) => {
-        const stairCenterZ = endSide * endRoomCenterZ;
-        const lowerFlightZ = stairCenterZ + endSide * flightOffsetZ;
-        const upperFlightZ = stairCenterZ - endSide * flightOffsetZ;
-
-        // The middle landing is a walkable floor at the top of the first flight.
-        if (Math.abs(position.x - landingCenterX) <= landingHalfX &&
-            Math.abs(position.z - stairCenterZ) <= landingHalfZ) {
-            return baseY + upperLevel;
-        }
-
-        if (inFlight(lowerFlightZ) &&
-            position.x <= stairBottomX && position.x >= landingX) {
-            const progress = (stairBottomX - position.x) / (stairBottomX - landingX);
-            return baseY + progress * upperLevel;
-        }
-
-        if (inFlight(upperFlightZ) &&
-            position.x >= landingX && position.x <= upperEndX) {
-            const progress = (position.x - landingX) / (upperEndX - landingX);
-            return baseY + upperLevel + progress * upperLevel;
-        }
-
-        if (inFlight(upperFlightZ) &&
-            position.x > upperEndX && position.x <= upperStairFillEndX) {
-            return baseY + upperLevel * 2;
-        }
-
-        return null;
-    };
-
-    const candidates = [];
-    for (const baseY of [0, CLASS_HEIGHT, CLASS_HEIGHT * 2]) {
-        for (const endSide of [1, -1]) {
-            const floorY = getFloorForEnd(endSide, baseY);
-            if (floorY !== null) candidates.push({ floorY, baseY });
-        }
-    }
-
-    // Both stair flights occupy the same X/Z footprint at different heights.
-    // Select the flight closest to the player's current eye level so the
-    // second-floor staircase does not snap back to the lower one.
-    const landingTieEyeY = WALK_FLOOR_Y + CLASS_HEIGHT / 2;
-    candidates.sort((a, b) => {
-        const distanceA = Math.abs((a.floorY + WALK_FLOOR_Y) - position.y);
-        const distanceB = Math.abs((b.floorY + WALK_FLOOR_Y) - position.y);
-        if (Math.abs(distanceA - distanceB) < 0.01) {
-            // At the exact shared landing footprint, use the camera height to
-            // choose lower vs. upper flight instead of always choosing floor 1.
-            return position.y > landingTieEyeY ? b.floorY - a.floorY : a.floorY - b.floorY;
-        }
-        return distanceA - distanceB;
-    });
-    if (candidates.length > 0) return candidates[0].floorY;
-
-    return 0;
-}
-
-function checkCollision(position) {
-    const radius = 0.3; // Player radius
-    const collisionStart = position.clone();
-    const stairFloorAtPosition = getEndStairFloorHeight(position);
-    const onStairFootprint = stairFloorAtPosition > 0;
-
-    // Only the low hallway wall blocks crossing; railing/tubes remain non-solid.
-    const hallwayWallX = CLASS_WIDTH / 2 + 2.2;
-    const hallwayWallHalfThickness = 0.07;
-    if (position.z > -CLASS_LENGTH / 2 && position.z < CLASS_LENGTH / 2 &&
-        position.x > hallwayWallX - hallwayWallHalfThickness - radius &&
-        position.x < hallwayWallX + hallwayWallHalfThickness + radius) {
-        
-        // Allow passage on the first floor in the middle (z between -3 and 3)
-        const isFirstFloor = position.y < 2.0;
-        const inMiddleGap = position.z > -12.1 && position.z < 12.1;
-        
-        if (!(isFirstFloor && inMiddleGap)) {
-            position.x = position.x < hallwayWallX
-                ? hallwayWallX - hallwayWallHalfThickness - radius
-                : hallwayWallX + hallwayWallHalfThickness + radius;
-        }
-    }
-
-    // World bounds
-    // Include both attached end-room/free-space areas in the walkable length.
-    const corridorEnd = 110;
-    if (position.z < -corridorEnd) position.z = -corridorEnd;
-    if (position.z > corridorEnd) position.z = corridorEnd;
-    if (position.x < -110) position.x = -110;
-    if (position.x > 110) position.x = 110;
-
-    // Perimeter Fence (x: -15 to 15, z: -19 to 19)
-    const fenceX = 110;
-    const fenceZ = 110;
-
-    // Left/Right Fence
-    if (position.x > fenceX - radius && position.x < fenceX + radius) {
-        if (position.x < fenceX) position.x = fenceX - radius; else position.x = fenceX + radius;
-    }
-    if (position.x > -fenceX - radius && position.x < -fenceX + radius) {
-        if (position.x < -fenceX) position.x = -fenceX - radius; else position.x = -fenceX + radius;
-    }
-    // Back Fence
-    if (position.x <= CLASS_WIDTH / 2 + radius && position.z > fenceZ - radius && position.z < fenceZ + radius) {
-        if (position.z < fenceZ) position.z = fenceZ - radius; else position.z = fenceZ + radius;
-    }
-    // Classroom Bounds
-    const classX = CLASS_WIDTH / 2; // 5
-    const classZ = CLASS_LENGTH / 2; // 9
-
-    // Front and Back classroom walls
-    if (position.x > -classX + radius && position.x < classX - radius) {
-        if (position.z > -classZ - radius && position.z < -classZ + radius) {
-            if (position.z < -classZ) position.z = -classZ - radius; else position.z = -classZ + radius;
-        }
-        if (position.z > classZ - radius && position.z < classZ + radius) {
-            if (position.z < classZ) position.z = classZ - radius; else position.z = classZ + radius;
-        }
-    }
-
-    // Left Wall
-    if (position.z > -classZ + radius && position.z < classZ - radius) {
-        if (position.x > -classX - radius && position.x < -classX + radius) {
-            if (position.x < -classX) position.x = -classX - radius; else position.x = -classX + radius;
-        }
-    }
-
-    // Obstacle Check (walls and explicitly marked walk obstacles).
-    const openDoorAtPosition = doorMeshes.some((door) =>
-        door.userData.isOpen &&
-        (() => {
-            const doorWorldPosition = new THREE.Vector3();
-            (door.children[0] || door).getWorldPosition(doorWorldPosition);
-            doorWorldPosition.z = door.userData.openingZ ?? doorWorldPosition.z;
-            return Math.abs(position.z - doorWorldPosition.z) < 1.6 / 2 - radius;
-        })()
-    );
-    const openSideDoorAtPosition = doorMeshes.some((door) => {
-        if (!door.userData.isOpen || door.userData.openingAxis !== 'x') return false;
-        const openingX = door.userData.openingX;
-        const openingZ = door.userData.openingZ;
-        const openingWidth = door.userData.openingWidth ?? 1.5;
-        return Math.abs(position.x - openingX) < openingWidth / 2 - radius &&
-            Math.abs(position.z - openingZ) < 0.6;
-    });
-    for (let obs of obstacles) {
-        // The obstacles list is already the explicit list of solid model
-        // parts. Open door panels are the only registered parts that must be
-        // ignored while their door group is open.
-        if (obs.parent?.userData?.isOpen) continue;
-        if (obs.userData.isStairLandingUnderfill && onStairFootprint) continue;
-
-        // Simple AABB approximation
-        const box = new THREE.Box3().setFromObject(obs);
-
-        // Only collide with walls on the player's current floor. Without
-        // this vertical check, cloned upper-floor walls would block the
-        // first-floor player even though they are far above.
-        if (box.max.y < position.y - 1.0 || box.min.y > position.y + 1.0) continue;
-
-        // The CR side door has a lintel above the opening. Once that door is
-        // open, do not let the lintel's AABB seal the doorway at eye height.
-        if (openSideDoorAtPosition) {
-            const openSideDoor = doorMeshes.find((door) =>
-                door.userData.isOpen && door.userData.openingAxis === 'x'
-            );
-            const openingX = openSideDoor?.userData.openingX;
-            const openingZ = openSideDoor?.userData.openingZ;
-            const openingWidth = openSideDoor?.userData.openingWidth ?? 1.5;
-            if (openingX !== undefined && openingZ !== undefined &&
-                box.min.x <= openingX + openingWidth / 2 &&
-                box.max.x >= openingX - openingWidth / 2 &&
-                box.min.z <= openingZ + 0.35 &&
-                box.max.z >= openingZ - 0.35) {
-                continue;
-            }
-        }
-
-        // Leave the actual doorway clear while its door is open. This also
-        // prevents cloned wall segments from sealing the opening.
-        if (openDoorAtPosition && box.min.x <= CLASS_WIDTH / 2 + radius &&
-            box.max.x >= CLASS_WIDTH / 2 - radius &&
-            position.z > -CLASS_LENGTH / 2 && position.z < CLASS_LENGTH / 2) {
-            continue;
-        }
-
-        // Check intersection with player cylinder
-        if (position.x + radius > box.min.x && position.x - radius < box.max.x &&
-            position.z + radius > box.min.z && position.z - radius < box.max.z) {
-
-            // Push out of collision
-            const dx1 = (box.min.x - radius) - position.x;
-            const dx2 = (box.max.x + radius) - position.x;
-            const dz1 = (box.min.z - radius) - position.z;
-            const dz2 = (box.max.z + radius) - position.z;
-
-            const minDx = Math.abs(dx1) < Math.abs(dx2) ? dx1 : dx2;
-            const minDz = Math.abs(dz1) < Math.abs(dz2) ? dz1 : dz2;
-
-            if (Math.abs(minDx) < Math.abs(minDz)) {
-                position.x += minDx;
-            } else {
-                position.z += minDz;
-            }
-        }
-    }
-
-    // Prevent stacked wall/door-frame corrections from throwing the player
-    // across the hallway. A collision may only nudge the player by one
-    // movement step, never teleport them.
-    const correction = position.clone().sub(collisionStart);
-    const maxCorrection = 0.65;
-    if (correction.length() > maxCorrection) {
-        // Reject an invalid multi-wall correction instead of moving the
-        // player through the doorway or back to an unrelated location.
-        position.copy(collisionStart);
-    }
-
-    return position;
 }
 
 function animate() {
@@ -3661,65 +3533,7 @@ function animate() {
     const time = performance.now();
     const delta = (time - prevTime) / 1000;
 
-    if (currentMode === 'EDIT') {
-        if (selectedObject) updatePropertiesPanel(); // Refresh UI if dragging
-    }
-
-    if (currentMode === 'WALK' && pointerLockControls.isLocked) {
-        // Smooth Door Animation
-        doorMeshes.forEach((door) => {
-            const data = door.userData;
-            if (data.openType === 'rotate') {
-                const targetRot = data.isOpen ? data.openRot : data.closeRot;
-                door.rotation.y += (targetRot - door.rotation.y) * 8.0 * delta;
-            } else if (data.openType === 'slide') {
-                const targetPos = data.isOpen ? data.openPos : data.closePos;
-                door.position.lerp(targetPos, 8.0 * delta);
-            }
-        });
-
-        velocity.x -= velocity.x * 10.0 * delta;
-        velocity.z -= velocity.z * 10.0 * delta;
-
-        direction.z = Number(moveForward) - Number(moveBackward);
-        direction.x = Number(moveRight) - Number(moveLeft);
-        direction.normalize(); // Ensure consistent movement in all directions
-
-        if (!isSitting) {
-            const speed = isSprinting ? 50.0 : 25.0;
-
-            if (moveForward || moveBackward) velocity.z -= direction.z * speed * delta;
-            if (moveLeft || moveRight) velocity.x -= direction.x * speed * delta;
-
-            pointerLockControls.moveRight(-velocity.x * delta);
-            pointerLockControls.moveForward(-velocity.z * delta);
-
-            // Apply Collision
-            const position = walkCamera.position;
-            const newPos = checkCollision(position.clone());
-            position.copy(newPos);
-
-            const stairFloorY = getEndStairFloorHeight(position);
-            const buildingFloorY = getBuildingFloorHeight(position);
-            const pwdFloorY = getPWDFloorHeight(position);
-            const floorY = pwdFloorY >= 0 ? pwdFloorY : (stairFloorY > 0 ? stairFloorY : buildingFloorY);
-            const targetEyeY = floorY + 1.6;
-            jumpVelocity -= 16.0 * delta;
-            position.y += jumpVelocity * delta;
-            if (position.y <= targetEyeY && jumpVelocity <= 0) {
-                position.y = targetEyeY;
-                jumpVelocity = 0;
-                canJump = true;
-            }
-        } else {
-            velocity.set(0, 0, 0);
-            jumpVelocity = 0;
-            canJump = true;
-            walkCamera.position.y = 1.1; // Sitting eye level
-        }
-
-        updateWalkHUD();
-    }
+    if (currentMode === 'EDIT' && selectedObject) updatePropertiesPanel();
 
     if (currentMode === 'VIEW') {
         const viewDirection = new THREE.Vector3();
@@ -3739,6 +3553,5 @@ function animate() {
     }
 
     prevTime = time;
-
     renderer.render(scene, camera);
 }
