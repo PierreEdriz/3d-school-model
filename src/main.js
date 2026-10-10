@@ -40,6 +40,20 @@ const CLASS_HEIGHT = 3.5;
 const WINDOW_WIDTH = 3.4;
 const WINDOW_OFFSET = 3.1;
 
+// The two rear building copies use a shorter four-classroom variant. Keep
+// the source/side buildings at six rooms and trim only the rear copies after
+// they are cloned so their existing components remain reusable.
+const BACK_BUILDING_ROOM_COUNT = 4;
+const BACK_BUILDING_CORE_LENGTH = SINGLE_ROOM_LENGTH * BACK_BUILDING_ROOM_COUNT;
+const BACK_BUILDING_CORE_HALF_LENGTH = BACK_BUILDING_CORE_LENGTH / 2;
+const BACK_BUILDING_END_ROOM_LENGTH = SINGLE_ROOM_LENGTH / 3;
+const BACK_BUILDING_END_SHIFT = (CLASS_LENGTH - BACK_BUILDING_CORE_LENGTH) / 2;
+const BACK_BUILDING_TOTAL_LENGTH = BACK_BUILDING_CORE_LENGTH + BACK_BUILDING_END_ROOM_LENGTH * 2;
+const BACK_BUILDING_JOIN_GAP = 8;
+const BUILDING_CORNER_GAP = BACK_BUILDING_JOIN_GAP;
+const SIDE_BUILDING_INSET = 30;
+const FULL_NEW_ROOF_LENGTH = CLASS_LENGTH + SINGLE_ROOM_LENGTH * 2 / 3 + 0.8;
+
 const doorMeshes = disabledWalkRegistry;
 
 // Shared security-device materials and small model helpers. These devices
@@ -1807,6 +1821,252 @@ function addEndRoomFloors(floorName) {
     });
 }
 
+function isBackBuildingEndFeatureName(name = '') {
+    return /^(endRoom|underStair|package|firstFloorEndRoom|secondFloorEndRoom|thirdFloorEndRoom|fourthFloorEndRoom|endSide|endGreen)/.test(name) ||
+        name.toLowerCase().includes('bathroom');
+}
+
+function containsBackBuildingEndFeature(part) {
+    let found = isBackBuildingEndFeatureName(part.name);
+    if (found) return true;
+
+    if (part.userData?.noThirdFloorClone || part.userData?.isStairLandingUnderfill) {
+        return true;
+    }
+
+    if (part.userData?.openType) {
+        part.traverse((child) => {
+            if (isBackBuildingEndFeatureName(child.name)) found = true;
+        });
+    }
+    return found;
+}
+
+function hasBackBuildingActionAncestor(part, roots) {
+    let ancestor = part.parent;
+    while (ancestor) {
+        if (roots.has(ancestor)) return true;
+        ancestor = ancestor.parent;
+    }
+    return false;
+}
+
+function resizeBackBuildingLongMesh(part) {
+    if (!part.isMesh || !part.geometry?.parameters) return;
+    if (part.name === 'ceiling4Interior') return;
+
+    const params = part.geometry.parameters;
+    if (part.name === 'thirdFloorSource' && part.geometry.type === 'PlaneGeometry') {
+        part.geometry = new THREE.PlaneGeometry(
+            params.width ?? CLASS_WIDTH,
+            BACK_BUILDING_CORE_LENGTH
+        );
+        return;
+    }
+
+    // Most of the continuous corridor and wall members are centered on Z and
+    // use a box/cylinder whose depth/height is the original six-room length.
+    // Replace only those long members; room-sized meshes are handled below.
+    if (part.geometry.type === 'BoxGeometry' && params.depth >= CLASS_LENGTH * 0.9) {
+        part.geometry = new THREE.BoxGeometry(
+            params.width,
+            params.height,
+            BACK_BUILDING_CORE_LENGTH
+        );
+        return;
+    }
+
+    if (part.geometry.type === 'CylinderGeometry' && params.height >= CLASS_LENGTH * 0.9) {
+        part.geometry = new THREE.CylinderGeometry(
+            params.radiusTop,
+            params.radiusBottom,
+            BACK_BUILDING_CORE_LENGTH,
+            params.radialSegments,
+            params.heightSegments,
+            params.openEnded,
+            params.thetaStart,
+            params.thetaLength
+        );
+    }
+}
+
+function repairBackBuildingFirstFloorCorridorRailings(backBuilding) {
+    const firstFloor = backBuilding.getObjectByName('firstFloor');
+    if (!firstFloor) return;
+
+    // The source first-floor railings are split around a 24.2-unit entrance
+    // using the original six-room length. After trimming the rear copies,
+    // those two rails still span the old footprint and overlap the shifted
+    // end ramps. Rebuild only these three continuous railing members for the
+    // four-room core; the ramp railings and their posts remain untouched.
+    const railingNames = new Set([
+        'corridorBalustrade',
+        'corridorTopRail',
+        'terraceGreenTube'
+    ]);
+    const templates = new Map();
+    const oldRailings = [];
+
+    firstFloor.traverse((part) => {
+        if (!railingNames.has(part.name)) return;
+        oldRailings.push(part);
+        if (!templates.has(part.name) && part.isMesh) templates.set(part.name, part);
+    });
+
+    oldRailings.forEach((part) => part.parent?.remove(part));
+
+    const entranceWidth = 24.2;
+    const halfLength = (BACK_BUILDING_CORE_LENGTH - entranceWidth) / 2;
+    const leftZ = -BACK_BUILDING_CORE_HALF_LENGTH + halfLength / 2;
+    const rightZ = BACK_BUILDING_CORE_HALF_LENGTH - halfLength / 2;
+
+    templates.forEach((template, name) => {
+        const params = template.geometry?.parameters;
+        [leftZ, rightZ].forEach((z, index) => {
+            const railing = template.clone();
+            if (template.geometry.type === 'BoxGeometry' && params) {
+                railing.geometry = new THREE.BoxGeometry(
+                    params.width,
+                    params.height,
+                    halfLength
+                );
+            } else if (template.geometry.type === 'CylinderGeometry' && params) {
+                railing.geometry = new THREE.CylinderGeometry(
+                    params.radiusTop,
+                    params.radiusBottom,
+                    halfLength,
+                    params.radialSegments,
+                    params.heightSegments,
+                    params.openEnded,
+                    params.thetaStart,
+                    params.thetaLength
+                );
+            }
+
+            railing.name = `${name}Back${index === 0 ? 'Left' : 'Right'}`;
+            railing.position.z = z;
+            firstFloor.add(railing);
+        });
+    });
+}
+
+function trimBackBuildingToFourRooms(backBuilding) {
+    // Work in the source building's local orientation. The caller applies the
+    // 90-degree rear-building rotation only after this trim is complete.
+    backBuilding.position.set(0, 0, 0);
+    backBuilding.rotation.set(0, 0, 0);
+    backBuilding.scale.set(1, 1, 1);
+    backBuilding.updateMatrixWorld(true);
+
+    const parts = [];
+    backBuilding.traverse((part) => {
+        if (part !== backBuilding) parts.push(part);
+    });
+
+    const boundsByPart = new Map();
+    parts.forEach((part) => {
+        const bounds = new THREE.Box3().setFromObject(part);
+        if (!bounds.isEmpty()) boundsByPart.set(part, bounds);
+    });
+
+    const removeRoots = new Set();
+    const shiftRoots = new Set();
+    const resizeRoots = new Set();
+    const markRemove = (part) => removeRoots.add(part);
+    const markShift = (part) => shiftRoots.add(part);
+
+    parts.forEach((part) => {
+        if (hasBackBuildingActionAncestor(part, removeRoots) ||
+            hasBackBuildingActionAncestor(part, shiftRoots) ||
+            hasBackBuildingActionAncestor(part, resizeRoots)) {
+            return;
+        }
+
+        const bounds = boundsByPart.get(part);
+        if (!bounds) return;
+
+        const centerZ = (bounds.min.z + bounds.max.z) / 2;
+        const absCenterZ = Math.abs(centerZ);
+        const name = part.name || '';
+
+        // Keep the roof and interior ceiling over the four-room core plus the
+        // two compact attached end sections.
+        if (name === 'newRoof4') {
+            part.scale.z *= BACK_BUILDING_TOTAL_LENGTH / FULL_NEW_ROOF_LENGTH;
+            resizeRoots.add(part);
+            return;
+        }
+        if (name === 'ceiling4Interior') {
+            part.scale.z *= BACK_BUILDING_TOTAL_LENGTH / Math.max(bounds.max.z - bounds.min.z, 1);
+            return;
+        }
+
+        // The corridor's end posts belong to the old six-room span. The
+        // retained room-boundary posts at +/-36 already close the core.
+        if ((name.startsWith('corridorOuterPost') ||
+            name.startsWith('corridorGreenTubeSupport') ||
+            name === 'corridorGreenUpright') && absCenterZ > BACK_BUILDING_CORE_HALF_LENGTH + 0.25) {
+            markRemove(part);
+            return;
+        }
+
+        // Furniture, classroom security devices, windows, and doors from the
+        // two removed outer classrooms should not survive in the rear copies.
+        if (part.userData?.isComponent || part.userData?.isSecurityDevice || part.userData?.type === 'window') {
+            if (absCenterZ > BACK_BUILDING_CORE_HALF_LENGTH + 0.25) markRemove(part);
+            return;
+        }
+
+        if (part.userData?.openType && absCenterZ > BACK_BUILDING_CORE_HALF_LENGTH + 0.25) {
+            if (containsBackBuildingEndFeature(part)) markShift(part);
+            else markRemove(part);
+            return;
+        }
+
+        // End-room, stair, bathroom, and package/corridor details are moved
+        // inward to the new capped ends instead of being deleted.
+        if (absCenterZ > CLASS_LENGTH / 2 - 2.0) {
+            markShift(part);
+            return;
+        }
+
+        // Anything between the retained core and the attached end sections is
+        // part of one of the two removed classrooms. Remove it; the existing
+        // room-boundary partition at +/-36 becomes the solid new end wall.
+        if (absCenterZ > BACK_BUILDING_CORE_HALF_LENGTH + 0.30) {
+            markRemove(part);
+        }
+    });
+
+    // Shorten the continuous classroom/corridor members. Roof descendants
+    // stay under the new roof-group scale and must not be resized a second
+    // time.
+    parts.forEach((part) => {
+        if (removeRoots.has(part) || shiftRoots.has(part) ||
+            hasBackBuildingActionAncestor(part, removeRoots) ||
+            hasBackBuildingActionAncestor(part, shiftRoots) ||
+            hasBackBuildingActionAncestor(part, resizeRoots)) {
+            return;
+        }
+        resizeBackBuildingLongMesh(part);
+    });
+
+    shiftRoots.forEach((part) => {
+        const bounds = boundsByPart.get(part);
+        if (!bounds) return;
+        part.position.z += ((bounds.min.z + bounds.max.z) / 2) > 0
+            ? -BACK_BUILDING_END_SHIFT
+            : BACK_BUILDING_END_SHIFT;
+    });
+
+    removeRoots.forEach((part) => {
+        part.parent?.remove(part);
+    });
+
+    repairBackBuildingFirstFloorCorridorRailings(backBuilding);
+    backBuilding.updateMatrixWorld(true);
+}
+
 function createUShapedBuildingLayout() {
     if (scene.getObjectByName('buildingUnitLeft')) return;
 
@@ -1839,19 +2099,14 @@ function createUShapedBuildingLayout() {
 
     const buildingLength = Math.max(unitSize.x, unitSize.z);
     const buildingWidth = Math.min(unitSize.x, unitSize.z);
-    // Use four full building copies to form one continuous U. The upper pair
-    // meet end-to-end at the center, while the side units sit at their ends.
-    const sideInset = Math.max(1.2, buildingWidth * 0.08);
-    // Triple the original clearance so every building has much more room
-    // between its neighboring copies while keeping the U layout aligned.
-    const buildingGap = Math.max(3, buildingWidth * 0.16) * 3;
-    // Pull the side units inside the upper ends so they do not protrude past
-    // the U's top corners.
-    const sideCenterX = buildingLength - buildingWidth / 2 + buildingGap / 2 - sideInset + 2;
-    const topCenterX = buildingLength / 2 + buildingGap / 2;
-    // Keep a small, consistent visual gap at the corners and between the
-    // upper pair instead of letting the copied buildings merge together.
-    const topCenterZ = buildingLength / 2 + buildingWidth / 2 + buildingGap / 2;
+    // Keep the shortened rear pair centered and bring the two side units
+    // close to their outer ends so the U corners are compact.
+    // The rear copies are the four-room variant, so place their centers by
+    // that shortened footprint. This makes the two back buildings meet at
+    // the middle instead of retaining the old six-room gap.
+    const topCenterX = BACK_BUILDING_TOTAL_LENGTH / 2 + BACK_BUILDING_JOIN_GAP / 2;
+    const sideCenterX = topCenterX + BACK_BUILDING_TOTAL_LENGTH / 2 + buildingWidth / 2 + BUILDING_CORNER_GAP - SIDE_BUILDING_INSET;
+    const topCenterZ = buildingLength / 2 + buildingWidth / 2 + BUILDING_CORNER_GAP;
 
     // Keep the original unit as the left side of the U.
     buildingUnit.position.set(-sideCenterX, 0, 0);
@@ -1882,22 +2137,48 @@ function createUShapedBuildingLayout() {
     const cloneUnit = (name, x, z, rotationY = 0) => {
         const clone = buildingUnit.clone(true);
         clone.name = name;
+        if (name === 'buildingUnitTopLeft' || name === 'buildingUnitTopRight') {
+            trimBackBuildingToFourRooms(clone);
+        }
         clone.position.set(x, 0, z);
         clone.rotation.y = rotationY;
         registerBuildingClone(clone);
         return clone;
     };
 
+    const alignSideBuildingToBack = (sideBuilding, backBuilding, isLeftSide) => {
+        const sideBounds = new THREE.Box3().setFromObject(sideBuilding);
+        const backBounds = new THREE.Box3().setFromObject(backBuilding);
+        const sideInnerX = isLeftSide ? sideBounds.max.x : sideBounds.min.x;
+        const backOuterX = isLeftSide ? backBounds.min.x : backBounds.max.x;
+        const targetInnerX = isLeftSide
+            ? backOuterX + SIDE_BUILDING_INSET
+            : backOuterX - SIDE_BUILDING_INSET;
+
+        // Use the actual world-space footprint edges so asymmetric end-room
+        // details cannot make one U corner drift away from the other.
+        sideBuilding.position.x += targetInnerX - sideInnerX;
+        sideBuilding.position.z += backBounds.min.z - BUILDING_CORNER_GAP - sideBounds.max.z;
+    };
+
     // Rotate the right side so its corridor/openings face the courtyard.
-    cloneUnit('buildingUnitRight', sideCenterX, 0, Math.PI);
-    cloneUnit('buildingUnitTopLeft', -topCenterX, topCenterZ, Math.PI / 2);
-    cloneUnit('buildingUnitTopRight', topCenterX, topCenterZ, Math.PI / 2);
+    const rightSideBuilding = cloneUnit('buildingUnitRight', sideCenterX, 0, Math.PI);
+    const topLeftBuilding = cloneUnit('buildingUnitTopLeft', -topCenterX, topCenterZ, Math.PI / 2);
+    const topRightBuilding = cloneUnit('buildingUnitTopRight', topCenterX, topCenterZ, Math.PI / 2);
+    scene.updateMatrixWorld(true);
+    alignSideBuildingToBack(buildingUnit, topLeftBuilding, true);
+    alignSideBuildingToBack(rightSideBuilding, topRightBuilding, false);
+    scene.updateMatrixWorld(true);
 
     // Expand the shared ground planes so the four-unit U layout is not cut
     // off at the old single-building boundary.
+    const layoutBounds = new THREE.Box3();
+    [buildingUnit, rightSideBuilding, topLeftBuilding, topRightBuilding].forEach((building) => {
+        layoutBounds.expandByObject(building);
+    });
     const layoutHalfWidth = Math.max(
-        sideCenterX + buildingWidth / 2,
-        topCenterX + buildingLength / 2
+        Math.abs(layoutBounds.min.x),
+        Math.abs(layoutBounds.max.x)
     );
     const layoutWidth = 2 * layoutHalfWidth;
     const groundPath = scene.getObjectByName('groundPath');
