@@ -358,6 +358,8 @@ function init() {
     createEndRoomBathrooms(CLASS_HEIGHT * 2, 'thirdFloor');
     createEndRoomBathrooms(CLASS_HEIGHT * 3, 'fourthFloor');
     createUShapedBuildingLayout();
+    createCentralCoveredCourt();
+    createCampusPerimeterFence();
     applyComponentVisibilityToggles();
     applyBuildingVisibilityToggles();
 }
@@ -2200,7 +2202,1534 @@ function createUShapedBuildingLayout() {
 
 }
 
+function createCentralGymnasium() {
+    if (scene.getObjectByName('gymnasium')) return;
 
+    const leftBuilding = scene.getObjectByName('buildingUnitLeft');
+    const rightBuilding = scene.getObjectByName('buildingUnitRight');
+    const backLeftBuilding = scene.getObjectByName('buildingUnitTopLeft');
+    const backRightBuilding = scene.getObjectByName('buildingUnitTopRight');
+    if (!leftBuilding || !rightBuilding || !backLeftBuilding || !backRightBuilding) return;
+
+    // Derive the courtyard from the finished building copies so the gym stays
+    // centered even when the building spacing is edited later.
+    const leftBounds = new THREE.Box3().setFromObject(leftBuilding);
+    const rightBounds = new THREE.Box3().setFromObject(rightBuilding);
+    const backLeftBounds = new THREE.Box3().setFromObject(backLeftBuilding);
+    const backRightBounds = new THREE.Box3().setFromObject(backRightBuilding);
+    const courtyardLeftX = leftBounds.max.x;
+    const courtyardRightX = rightBounds.min.x;
+    const courtyardFrontZ = Math.max(leftBounds.min.z, rightBounds.min.z);
+    const courtyardBackZ = Math.min(backLeftBounds.min.z, backRightBounds.min.z);
+    const courtyardWidth = courtyardRightX - courtyardLeftX;
+    const courtyardDepth = courtyardBackZ - courtyardFrontZ;
+    const circulationClearance = 8;
+
+    if (courtyardWidth < 42 || courtyardDepth < 40) return;
+
+    const gymWidth = Math.min(48, courtyardWidth - circulationClearance * 2);
+    const gymDepth = Math.min(32, courtyardDepth - circulationClearance * 2);
+    const gymCenterZ = (courtyardFrontZ + courtyardBackZ) / 2;
+    const gymHeight = 8.5;
+    const wallThickness = 0.30;
+
+    const gymnasium = new THREE.Group();
+    gymnasium.name = 'gymnasium';
+    gymnasium.position.set(0, 0, gymCenterZ);
+    gymnasium.userData.isComponent = true;
+    gymnasium.userData.type = 'gymnasium';
+
+    const wallMat = new THREE.MeshStandardMaterial({
+        color: 0xeedcb0,
+        roughness: 0.82,
+        metalness: 0.02
+    });
+    const trimMat = new THREE.MeshStandardMaterial({
+        color: 0x566d2f,
+        roughness: 0.72,
+        metalness: 0.02
+    });
+    const roofMat = new THREE.MeshStandardMaterial({
+        color: 0x6e8739,
+        roughness: 0.78,
+        metalness: 0.02
+    });
+    const courtMat = new THREE.MeshStandardMaterial({
+        color: 0x9a6b43,
+        roughness: 0.76,
+        metalness: 0.0
+    });
+    const courtLineMat = new THREE.MeshStandardMaterial({
+        color: 0xf4ead0,
+        roughness: 0.65,
+        metalness: 0.0
+    });
+    const glassMat = new THREE.MeshStandardMaterial({
+        color: 0x47747a,
+        roughness: 0.32,
+        metalness: 0.12,
+        transparent: true,
+        opacity: 0.78
+    });
+    const doorMat = new THREE.MeshStandardMaterial({
+        color: 0x3f5d2b,
+        roughness: 0.72,
+        metalness: 0.05
+    });
+    const bleacherMat = new THREE.MeshStandardMaterial({
+        color: 0xb37b43,
+        roughness: 0.8,
+        metalness: 0.0
+    });
+    const serviceMat = new THREE.MeshStandardMaterial({
+        color: 0xc6a77d,
+        roughness: 0.88,
+        metalness: 0.0
+    });
+
+    const addBox = (name, width, height, depth, x, y, z, material, parent = gymnasium) => {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+        mesh.name = name;
+        mesh.position.set(x, y, z);
+        mesh.receiveShadow = true;
+        mesh.castShadow = false;
+        parent.add(mesh);
+        return mesh;
+    };
+
+    // A solid shell keeps the gym weather-tight; doors and windows are visual
+    // panels on the shell, so no unintended openings are left in the model.
+    addBox('gymnasiumFoundation', gymWidth, 0.18, gymDepth, 0, 0.09, 0, wallMat);
+    addBox('gymnasiumFloor', gymWidth - 0.8, 0.12, gymDepth - 0.8, 0, 0.24, 0, courtMat);
+    addBox('gymnasiumWallLeft', wallThickness, gymHeight, gymDepth, -gymWidth / 2 + wallThickness / 2, gymHeight / 2, 0, wallMat);
+    addBox('gymnasiumWallRight', wallThickness, gymHeight, gymDepth, gymWidth / 2 - wallThickness / 2, gymHeight / 2, 0, wallMat);
+    addBox('gymnasiumWallBack', gymWidth, gymHeight, wallThickness, 0, gymHeight / 2, gymDepth / 2 - wallThickness / 2, wallMat);
+    addBox('gymnasiumWallFront', gymWidth, gymHeight, wallThickness, 0, gymHeight / 2, -gymDepth / 2 + wallThickness / 2, wallMat);
+
+    // Court sized for basketball/volleyball use.
+    const courtLength = Math.min(36, gymWidth - 10);
+    const courtWidth = Math.min(20, gymDepth - 10);
+    const courtY = 0.34;
+    const lineThickness = 0.11;
+    addBox('gymCourtCenterLine', lineThickness, 0.035, courtWidth, 0, courtY, 0, courtLineMat);
+    addBox('gymCourtEndLineLeft', lineThickness, 0.035, courtWidth, -courtLength / 2, courtY, 0, courtLineMat);
+    addBox('gymCourtEndLineRight', lineThickness, 0.035, courtWidth, courtLength / 2, courtY, 0, courtLineMat);
+    addBox('gymCourtSideLineFront', courtLength, 0.035, lineThickness, 0, courtY, -courtWidth / 2, courtLineMat);
+    addBox('gymCourtSideLineBack', courtLength, 0.035, lineThickness, 0, courtY, courtWidth / 2, courtLineMat);
+    const centerCircle = new THREE.Mesh(
+        new THREE.TorusGeometry(courtWidth * 0.16, 0.065, 8, 40),
+        courtLineMat
+    );
+    centerCircle.name = 'gymCourtCenterCircle';
+    centerCircle.rotation.x = Math.PI / 2;
+    centerCircle.position.set(0, courtY + 0.02, 0);
+    gymnasium.add(centerCircle);
+
+    // Two backboards and hoops on the short ends of the court.
+    [-1, 1].forEach((side) => {
+        const boardX = side * (courtLength / 2 - 0.65);
+        addBox(`gymHoopSupport${side > 0 ? 'Right' : 'Left'}`, 0.18, 3.5, 0.18, side * (courtLength / 2 - 1.7), 1.85, 0, trimMat);
+        addBox(`gymBackboard${side > 0 ? 'Right' : 'Left'}`, 0.12, 1.55, 2.45, boardX, 4.45, 0, glassMat);
+        const rim = new THREE.Mesh(
+            new THREE.TorusGeometry(0.55, 0.065, 8, 28),
+            trimMat
+        );
+        rim.name = `gymHoop${side > 0 ? 'Right' : 'Left'}`;
+        rim.rotation.x = Math.PI / 2;
+        rim.position.set(side * (courtLength / 2 - 1.3), 3.55, 0);
+        gymnasium.add(rim);
+    });
+
+    // Four stepped bleacher rows on each long side.
+    [-1, 1].forEach((side) => {
+        for (let row = 0; row < 4; row++) {
+            const rowHeight = 0.30;
+            const rowDepth = 0.72;
+            const rowZ = side * (courtWidth / 2 + 1.05 + row * rowDepth);
+            addBox(
+                `gymBleacher${side > 0 ? 'Back' : 'Front'}${row + 1}`,
+                courtLength - 3,
+                rowHeight,
+                rowDepth,
+                0,
+                0.42 + row * rowHeight,
+                rowZ,
+                bleacherMat
+            );
+        }
+    });
+
+    // Compact locker/storage blocks at the rear corners of the hall.
+    const serviceWidth = 6;
+    const serviceDepth = 4;
+    const serviceHeight = 3.1;
+    [-1, 1].forEach((side) => {
+        const serviceX = side * (gymWidth / 2 - serviceWidth / 2 - 1);
+        const serviceZ = gymDepth / 2 - serviceDepth / 2 - 1;
+        addBox(
+            `gymServiceBlock${side > 0 ? 'Right' : 'Left'}`,
+            serviceWidth,
+            serviceHeight,
+            serviceDepth,
+            serviceX,
+            serviceHeight / 2 + 0.28,
+            serviceZ,
+            serviceMat
+        );
+        addBox(
+            `gymServiceDoor${side > 0 ? 'Right' : 'Left'}`,
+            1.35,
+            2.35,
+            0.08,
+            serviceX,
+            1.45,
+            serviceZ - serviceDepth / 2 - 0.05,
+            doorMat
+        );
+    });
+
+    // Side glazing and two courtyard-facing entrances.
+    [-1, 1].forEach((side) => {
+        [-10, 0, 10].forEach((z, index) => {
+            const window = addBox(
+                `gymWindow${side > 0 ? 'Right' : 'Left'}${index + 1}`,
+                0.06,
+                1.55,
+                3.4,
+                side * (gymWidth / 2 + 0.01),
+                5.45,
+                z,
+                glassMat
+            );
+            window.userData.type = 'window';
+        });
+    });
+
+    [-1, 1].forEach((side) => {
+        const entrance = new THREE.Group();
+        entrance.name = `gymEntrance${side > 0 ? 'Right' : 'Left'}`;
+        entrance.userData.openType = 'gymEntrance';
+        const door = new THREE.Mesh(new THREE.BoxGeometry(2.1, 2.8, 0.08), doorMat);
+        door.position.set(side * 4.2, 1.42, -gymDepth / 2 - 0.18);
+        door.userData.type = 'door';
+        entrance.add(door);
+        const canopy = new THREE.Mesh(new THREE.BoxGeometry(3.0, 0.16, 1.2), trimMat);
+        canopy.position.set(side * 4.2, 3.15, -gymDepth / 2 - 0.55);
+        entrance.add(canopy);
+        gymnasium.add(entrance);
+    });
+
+    // A short covered approach from the courtyard keeps the entrance readable.
+    addBox('gymnasiumCourtyardWalkway', gymWidth * 0.62, 0.08, 8, 0, 0.05, -gymDepth / 2 - 4, wallMat);
+    addBox('gymnasiumEntranceStep', 12, 0.16, 1.1, 0, 0.08, -gymDepth / 2 - 1.05, trimMat);
+
+    // Match the school silhouette with a low green gable roof.
+    const gymRoof = new THREE.Group();
+    gymRoof.name = 'gymnasiumRoof';
+    const roofAngle = 18 * Math.PI / 180;
+    const roofHalfSpan = gymWidth / 2 + 0.7;
+    const roofPanelWidth = roofHalfSpan / Math.cos(roofAngle);
+    const roofCenterY = gymHeight + (roofHalfSpan * Math.tan(roofAngle)) / 2;
+    const roofDepth = gymDepth + 1.0;
+    const roofLeft = new THREE.Mesh(new THREE.BoxGeometry(roofPanelWidth, 0.22, roofDepth), roofMat);
+    roofLeft.name = 'gymnasiumRoofLeft';
+    roofLeft.rotation.z = roofAngle;
+    roofLeft.position.set(-roofHalfSpan / 2, roofCenterY, 0);
+    gymRoof.add(roofLeft);
+    const roofRight = new THREE.Mesh(new THREE.BoxGeometry(roofPanelWidth, 0.22, roofDepth), roofMat);
+    roofRight.name = 'gymnasiumRoofRight';
+    roofRight.rotation.z = -roofAngle;
+    roofRight.position.set(roofHalfSpan / 2, roofCenterY, 0);
+    gymRoof.add(roofRight);
+    addBox(
+        'gymnasiumRoofRidge',
+        0.32,
+        0.24,
+        roofDepth + 0.12,
+        0,
+        gymHeight + roofHalfSpan * Math.tan(roofAngle) + 0.08,
+        0,
+        trimMat,
+        gymRoof
+    );
+    gymnasium.add(gymRoof);
+
+    scene.add(gymnasium);
+    addUniqueRegistryItem(objects, gymnasium);
+    window.gymnasiumGroup = gymnasium;
+    if (window.roofGroups) window.roofGroups.push(gymRoof);
+}
+
+
+
+function createCentralCoveredCourt() {
+    if (scene.getObjectByName('coveredCourt')) return;
+
+    const leftBuilding = scene.getObjectByName('buildingUnitLeft');
+    const rightBuilding = scene.getObjectByName('buildingUnitRight');
+    const backLeftBuilding = scene.getObjectByName('buildingUnitTopLeft');
+    const backRightBuilding = scene.getObjectByName('buildingUnitTopRight');
+    if (!leftBuilding || !rightBuilding || !backLeftBuilding || !backRightBuilding) return;
+
+    // Use the finished building copies as the source of truth so the court
+    // stays centered if the surrounding campus spacing is edited later.
+    const leftBounds = new THREE.Box3().setFromObject(leftBuilding);
+    const rightBounds = new THREE.Box3().setFromObject(rightBuilding);
+    const backLeftBounds = new THREE.Box3().setFromObject(backLeftBuilding);
+    const backRightBounds = new THREE.Box3().setFromObject(backRightBuilding);
+    const courtyardLeftX = leftBounds.max.x;
+    const courtyardRightX = rightBounds.min.x;
+    const courtyardFrontZ = Math.max(leftBounds.min.z, rightBounds.min.z);
+    const courtyardBackZ = Math.min(backLeftBounds.min.z, backRightBounds.min.z);
+    const courtyardWidth = courtyardRightX - courtyardLeftX;
+    const courtyardDepth = courtyardBackZ - courtyardFrontZ;
+    const circulationClearance = 8;
+
+    // Skip rather than intersect a building if a future layout edit makes
+    // the courtyard too narrow for the pavilion.
+    if (courtyardWidth < 58 || courtyardDepth < 48) return;
+
+    // Keep the same roof profile and long front-to-back orientation, but grow
+    // the pavilion footprint so the stage and side rooms can be doubled
+    // without covering the playable court.
+    const roofWidth = Math.min(48, courtyardWidth - circulationClearance * 2);
+    // Keep the long axis compact enough for the courtyard while preserving
+    // the no-overlap clearance around the rear buildings.
+    const roofDepth = Math.min(84, courtyardDepth - circulationClearance * 2);
+    const floorWidth = roofWidth - 4.4;
+    const floorDepth = roofDepth - 4.4;
+    const courtCenterX = (courtyardLeftX + courtyardRightX) / 2;
+    // Keep the pavilion footprint and all of its dimensions unchanged, but
+    // place its rear edge close to the two back buildings.
+    const courtRearClearance = 12.0;
+    const courtCenterZ = courtyardBackZ - roofDepth / 2 - courtRearClearance;
+    // Lower the pavilion profile so the roof stays clearly below the
+    // surrounding multi-storey school buildings.
+    const roofEaveY = 5.1;
+    const columnHeight = 4.85;
+    const roofAngle = 13 * Math.PI / 180;
+    const roofHalfSpan = roofWidth / 2;
+    const roofRidgeY = roofEaveY + roofHalfSpan * Math.tan(roofAngle);
+
+    const coveredCourt = new THREE.Group();
+    coveredCourt.name = 'coveredCourt';
+    coveredCourt.position.set(courtCenterX, 0, courtCenterZ);
+    coveredCourt.userData.isComponent = true;
+    coveredCourt.userData.type = 'coveredCourt';
+
+    const concreteMat = new THREE.MeshStandardMaterial({
+        color: 0xb9b7ad,
+        roughness: 0.86,
+        metalness: 0.0
+    });
+    const roofMat = new THREE.MeshStandardMaterial({
+        color: 0x78a99d,
+        roughness: 0.7,
+        metalness: 0.18
+    });
+    const roofTrimMat = new THREE.MeshStandardMaterial({
+        color: 0x4f7967,
+        roughness: 0.72,
+        metalness: 0.2
+    });
+    const trussMat = new THREE.MeshStandardMaterial({
+        color: 0xe2e5de,
+        roughness: 0.68,
+        metalness: 0.28
+    });
+    const columnMat = new THREE.MeshStandardMaterial({
+        color: 0xe8d9b7,
+        roughness: 0.84,
+        metalness: 0.02
+    });
+    const courtLineMat = new THREE.MeshStandardMaterial({
+        color: 0xf4ead1,
+        roughness: 0.64,
+        metalness: 0.0
+    });
+    const serviceMat = new THREE.MeshStandardMaterial({
+        color: 0xd9c9a6,
+        roughness: 0.88,
+        metalness: 0.0
+    });
+    const stageDeckMat = new THREE.MeshStandardMaterial({
+        color: 0x8e6544,
+        roughness: 0.82,
+        metalness: 0.0
+    });
+    const stageBackdropMat = new THREE.MeshStandardMaterial({
+        color: 0xd6c8a8,
+        roughness: 0.88,
+        metalness: 0.0
+    });
+    const stageAccentMat = new THREE.MeshStandardMaterial({
+        color: 0x6d8f79,
+        roughness: 0.72,
+        metalness: 0.04
+    });
+    const backboardMat = new THREE.MeshStandardMaterial({
+        color: 0x9fc4c1,
+        roughness: 0.34,
+        metalness: 0.16,
+        transparent: true,
+        opacity: 0.82
+    });
+    const basketballRimMat = new THREE.MeshStandardMaterial({
+        color: 0xe8791b,
+        roughness: 0.48,
+        metalness: 0.2
+    });
+    const basketballFrameMat = new THREE.MeshStandardMaterial({
+        color: 0x202323,
+        roughness: 0.44,
+        metalness: 0.42
+    });
+    const basketballNetMat = new THREE.MeshStandardMaterial({
+        color: 0xf2f0e8,
+        roughness: 0.78,
+        metalness: 0.0,
+        transparent: true,
+        opacity: 0.86
+    });
+    const basketballWheelMat = new THREE.MeshStandardMaterial({
+        color: 0x343b3a,
+        roughness: 0.82,
+        metalness: 0.05
+    });
+
+    const addBox = (name, width, height, depth, x, y, z, material, parent = coveredCourt) => {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+        mesh.name = name;
+        mesh.position.set(x, y, z);
+        mesh.receiveShadow = true;
+        mesh.castShadow = false;
+        mesh.userData.isCoveredCourtPart = true;
+        parent.add(mesh);
+        return mesh;
+    };
+
+    const addBeamBetween = (name, start, end, thickness, material, parent = coveredCourt) => {
+        const startPoint = new THREE.Vector3(start[0], start[1], start[2]);
+        const endPoint = new THREE.Vector3(end[0], end[1], end[2]);
+        const direction = new THREE.Vector3().subVectors(endPoint, startPoint);
+        const beam = new THREE.Mesh(
+            new THREE.BoxGeometry(thickness, thickness, direction.length()),
+            material
+        );
+        beam.name = name;
+        beam.position.copy(startPoint).add(endPoint).multiplyScalar(0.5);
+        beam.quaternion.setFromUnitVectors(
+            new THREE.Vector3(0, 0, 1),
+            direction.normalize()
+        );
+        beam.receiveShadow = true;
+        beam.castShadow = false;
+        beam.userData.isCoveredCourtPart = true;
+        parent.add(beam);
+        return beam;
+    };
+
+    const addTorus = (name, radius, tube, x, y, z, material, parent = coveredCourt) => {
+        const mesh = new THREE.Mesh(new THREE.TorusGeometry(radius, tube, 8, 40), material);
+        mesh.name = name;
+        mesh.rotation.x = Math.PI / 2;
+        mesh.position.set(x, y, z);
+        mesh.receiveShadow = true;
+        mesh.userData.isCoveredCourtPart = true;
+        parent.add(mesh);
+        return mesh;
+    };
+
+    // Concrete apron and painted activity surface under the open pavilion.
+    addBox('coveredCourtFoundation', floorWidth + 1.4, 0.22, floorDepth + 1.4, 0, 0.11, 0, concreteMat);
+    addBox('coveredCourtFloor', floorWidth, 0.12, floorDepth, 0, 0.28, 0, concreteMat);
+    const activityWidth = floorWidth - 3.4;
+    const activityDepth = floorDepth - 3.4;
+    // Keep the concrete floor as the visible court surface; the extra gray
+    // overlay layer was removed so it does not cover the court.
+
+    // Simple basketball/volleyball court markings scaled to the floor.
+    // Reserve a visible rear buffer for the stage so the playable court does
+    // not run underneath the platform.
+    const stageDepthForClearance = Math.min(11.2, floorDepth * 0.22);
+    const stageFrontClearanceZ = floorDepth / 2 - stageDepthForClearance - 0.45;
+    const stagePlayingBuffer = 1.0;
+    const courtLength = Math.min(
+        48,
+        activityDepth - 2.0,
+        Math.max(8, 2 * (stageFrontClearanceZ - stagePlayingBuffer))
+    );
+    const courtWidth = Math.min(25, activityWidth - 2.0);
+    // Shift only the marked playing court slightly toward the front so it
+    // has more breathing room from the rear stage; the pavilion footprint
+    // and all covered-court structures stay unchanged.
+    const courtOffsetZ = -6.0;
+    const lineThickness = 0.10;
+    const lineY = 0.405;
+    addBox('coveredCourtLineCenter', courtWidth, 0.026, lineThickness, 0, lineY, courtOffsetZ, courtLineMat);
+    addBox('coveredCourtLineEndFront', courtWidth, 0.026, lineThickness, 0, lineY, courtOffsetZ - courtLength / 2, courtLineMat);
+    addBox('coveredCourtLineEndBack', courtWidth, 0.026, lineThickness, 0, lineY, courtOffsetZ + courtLength / 2, courtLineMat);
+    addBox('coveredCourtLineSideLeft', lineThickness, 0.026, courtLength, -courtWidth / 2, lineY, courtOffsetZ, courtLineMat);
+    addBox('coveredCourtLineSideRight', lineThickness, 0.026, courtLength, courtWidth / 2, lineY, courtOffsetZ, courtLineMat);
+    addTorus('coveredCourtCenterCircle', courtWidth * 0.16, 0.055, 0, lineY + 0.02, courtOffsetZ, courtLineMat);
+    [-1, 1].forEach((side) => {
+        const keyZ = courtOffsetZ + side * (courtLength / 2 - 4.8);
+        addBox(`coveredCourtKey${side > 0 ? 'Back' : 'Front'}`, courtWidth * 0.52, 0.026, 9.6, 0, lineY, keyZ, courtLineMat);
+    });
+
+    // Mobile basketball goals follow the reference: clear backboards with
+    // orange frames, orange rims and nets, plus a weighted base with angled
+    // white braces that stays behind each end line.
+    [-1, 1].forEach((side) => {
+        const sideName = side > 0 ? 'Back' : 'Front';
+        const goalZ = courtOffsetZ + side * (courtLength / 2 - 0.7);
+        const boardY = 4.48;
+        const boardWidth = 2.35;
+        const boardHeight = 1.5;
+        const boardFrameZ = goalZ - side * 0.08;
+        const rimZ = courtOffsetZ + side * (courtLength / 2 - 1.28);
+        const supportBaseZ = goalZ + side * 1.7;
+        const supportMastZ = goalZ + side * 0.58;
+        const supportBarZ = goalZ + side * 0.18;
+        const backboardMountZ = goalZ + side * 0.08;
+
+        addBox(
+            `coveredCourtBackboard${sideName}`,
+            boardWidth,
+            boardHeight,
+            0.12,
+            0,
+            boardY,
+            goalZ,
+            backboardMat
+        );
+        addBox(`coveredCourtBackboardFrameTop${sideName}`, boardWidth + 0.20, 0.10, 0.08, 0, boardY + boardHeight / 2, boardFrameZ, basketballRimMat);
+        addBox(`coveredCourtBackboardFrameBottom${sideName}`, boardWidth + 0.20, 0.10, 0.08, 0, boardY - boardHeight / 2, boardFrameZ, basketballRimMat);
+        addBox(`coveredCourtBackboardFrameLeft${sideName}`, 0.10, boardHeight, 0.08, -boardWidth / 2, boardY, boardFrameZ, basketballRimMat);
+        addBox(`coveredCourtBackboardFrameRight${sideName}`, 0.10, boardHeight, 0.08, boardWidth / 2, boardY, boardFrameZ, basketballRimMat);
+
+        const targetWidth = 1.15;
+        const targetHeight = 0.62;
+        const targetBottomY = boardY - 0.34;
+        addBox(`coveredCourtBackboardTargetTop${sideName}`, targetWidth, 0.07, 0.09, 0, targetBottomY + targetHeight, boardFrameZ - side * 0.02, basketballRimMat);
+        addBox(`coveredCourtBackboardTargetBottom${sideName}`, targetWidth, 0.07, 0.09, 0, targetBottomY, boardFrameZ - side * 0.02, basketballRimMat);
+        addBox(`coveredCourtBackboardTargetLeft${sideName}`, 0.07, targetHeight, 0.09, -targetWidth / 2, targetBottomY + targetHeight / 2, boardFrameZ - side * 0.02, basketballRimMat);
+        addBox(`coveredCourtBackboardTargetRight${sideName}`, 0.07, targetHeight, 0.09, targetWidth / 2, targetBottomY + targetHeight / 2, boardFrameZ - side * 0.02, basketballRimMat);
+
+        addTorus(
+            `coveredCourtHoop${sideName}`,
+            0.54,
+            0.055,
+            0,
+            3.58,
+            rimZ,
+            basketballRimMat
+        );
+        for (let netIndex = 0; netIndex < 8; netIndex++) {
+            const netAngle = netIndex * Math.PI * 2 / 8;
+            const net = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.018, 0.018, 0.42, 8),
+                basketballNetMat
+            );
+            net.name = `coveredCourtHoopNet${sideName}${netIndex + 1}`;
+            net.position.set(
+                Math.cos(netAngle) * 0.40,
+                3.37,
+                rimZ + Math.sin(netAngle) * 0.40
+            );
+            net.userData.isCoveredCourtPart = true;
+            coveredCourt.add(net);
+        }
+
+        addBox(`coveredCourtHoopBase${sideName}`, 2.75, 0.22, 2.35, 0, 0.38, supportBaseZ, basketballFrameMat);
+        addBox(`coveredCourtHoopBaseWeight${sideName}`, 2.35, 0.18, 1.85, 0, 0.58, supportBaseZ - side * 0.10, basketballFrameMat);
+        addBox(`coveredCourtHoopMastBaseJoint${sideName}`, 0.42, 0.14, 0.42, 0, 0.66, supportMastZ, basketballFrameMat);
+        addBox(`coveredCourtHoopMast${sideName}`, 0.18, 3.25, 0.18, 0, 2.10, supportMastZ, basketballFrameMat);
+        addBox(`coveredCourtHoopMastTopJoint${sideName}`, 0.34, 0.14, 0.34, 0, 3.82, supportMastZ, basketballFrameMat);
+        addBox(`coveredCourtHoopSupportBar${sideName}`, 1.80, 0.14, 0.14, 0, 4.00, supportBarZ, basketballFrameMat);
+        addBeamBetween(
+            `coveredCourtHoopMastToSupport${sideName}`,
+            [0, 3.72, supportMastZ],
+            [0, 4.00, supportBarZ],
+            0.14,
+            basketballFrameMat
+        );
+        addBeamBetween(
+            `coveredCourtHoopBackboardMount${sideName}`,
+            [0, 4.00, supportBarZ],
+            [0, 4.00, backboardMountZ],
+            0.14,
+            basketballFrameMat
+        );
+        addBox(`coveredCourtHoopBaseCrossbar${sideName}`, 1.95, 0.14, 0.14, 0, 0.72, supportBaseZ, basketballFrameMat);
+
+        [-0.84, 0.84].forEach((x, braceIndex) => {
+            addBeamBetween(
+                `coveredCourtHoopUpperBrace${sideName}${braceIndex + 1}`,
+                [x, 0.58, supportBaseZ + side * 0.82],
+                [x, 3.98, supportBarZ],
+                0.13,
+                basketballFrameMat
+            );
+            addBeamBetween(
+                `coveredCourtHoopLowerBrace${sideName}${braceIndex + 1}`,
+                [x, 0.52, supportBaseZ - side * 0.72],
+                [0, 1.55, supportMastZ],
+                0.10,
+                basketballFrameMat
+            );
+        });
+
+        [-0.95, 0.95].forEach((x, wheelIndex) => {
+            const wheel = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.14, 0.14, 0.14, 12),
+                basketballWheelMat
+            );
+            wheel.name = `coveredCourtHoopWheel${sideName}${wheelIndex + 1}`;
+            wheel.rotation.z = Math.PI / 2;
+            wheel.position.set(x, 0.24, supportBaseZ + side * 0.82);
+            wheel.userData.isCoveredCourtPart = true;
+            coveredCourt.add(wheel);
+        });
+    });
+
+    // Evenly distributed perimeter columns leave all four sides open.
+    const distribute = (start, end, spacing) => {
+        const count = Math.max(1, Math.ceil((end - start) / spacing));
+        return Array.from({ length: count + 1 }, (_, index) => start + (end - start) * (index / count));
+    };
+    const columnInset = 0.45;
+    const columnY = columnHeight / 2 + 0.42;
+    const columnFrontBackZ = floorDepth / 2 - columnInset;
+    const columnSideX = floorWidth / 2 - columnInset;
+    const columnZPositions = distribute(-columnFrontBackZ, columnFrontBackZ, 8.5);
+
+    // Plain cream rectangular posts with only a simple base and cap.
+    const addCoveredCourtColumn = (name, x, z) => {
+        const postWidth = 0.46;
+        const baseHeight = 0.18;
+        const postBaseY = 0.43;
+        addBox(name, postWidth, columnHeight, postWidth, x, columnY, z, columnMat);
+        addBox(`${name}Base`, 0.68, baseHeight, 0.68, x, postBaseY, z, columnMat);
+        addBox(`${name}Cap`, 0.62, 0.14, 0.62, x, columnY + columnHeight / 2 + 0.07, z, columnMat);
+    };
+
+    [
+        ['FrontLeft', -columnSideX, -columnFrontBackZ],
+        ['FrontRight', columnSideX, -columnFrontBackZ],
+        ['BackLeft', -columnSideX, columnFrontBackZ],
+        ['BackRight', columnSideX, columnFrontBackZ]
+    ].forEach(([name, x, z]) => {
+        addCoveredCourtColumn(`coveredCourtColumn${name}Corner`, x, z);
+    });
+    columnZPositions.slice(1, -1).forEach((z, index) => {
+        addCoveredCourtColumn(`coveredCourtColumnLeft${index + 1}`, -columnSideX, z);
+        addCoveredCourtColumn(`coveredCourtColumnRight${index + 1}`, columnSideX, z);
+    });
+
+    // Matching rear stage rooms flank the platform for storage, dressing, or
+    // program support while keeping a small gap between each room and stage.
+    const serviceWidth = Math.min(6.2, floorWidth * 0.15);
+    const serviceDepth = 8.4;
+    // Raise both side rooms so their roof caps align with the stage barrier.
+    const serviceHeight = 4.0;
+    const serviceX = floorWidth / 2 - serviceWidth / 2 - 0.5;
+    const serviceZ = floorDepth / 2 - serviceDepth / 2 - 0.85;
+    addBox('coveredCourtSupportBlock', serviceWidth, serviceHeight, serviceDepth, serviceX, serviceHeight / 2 + 0.42, serviceZ, serviceMat);
+    addBox('coveredCourtSupportRoof', serviceWidth + 0.35, 0.18, serviceDepth + 0.35, serviceX, serviceHeight + 0.56, serviceZ, roofTrimMat);
+    addBox('coveredCourtStageRoomLeft', serviceWidth, serviceHeight, serviceDepth, -serviceX, serviceHeight / 2 + 0.42, serviceZ, serviceMat);
+    addBox('coveredCourtStageRoomLeftRoof', serviceWidth + 0.35, 0.18, serviceDepth + 0.35, -serviceX, serviceHeight + 0.56, serviceZ, roofTrimMat);
+
+    // Raised stage at the rear/top end of the court, facing the activity
+    // floor. Its width is fitted between the two matching side rooms.
+    const stageGroup = new THREE.Group();
+    stageGroup.name = 'coveredCourtStage';
+    stageGroup.userData.isCoveredCourtPart = true;
+    // Push both stage rooms flush against the platform edges as requested.
+    const stageRoomGap = 0;
+    const stageLeftX = -floorWidth / 2 + 0.5 + serviceWidth + stageRoomGap;
+    const stageRightX = floorWidth / 2 - 0.5 - serviceWidth - stageRoomGap;
+    const stageWidth = Math.min(30, stageRightX - stageLeftX);
+    const stageCenterX = (stageLeftX + stageRightX) / 2;
+    const stageDepth = stageDepthForClearance;
+    const stageHeight = 0.65;
+    const stageZ = floorDepth / 2 - stageDepth / 2 - 0.45;
+    const stageFrontZ = stageZ - stageDepth / 2;
+
+    addBox('coveredCourtStageBase', stageWidth, stageHeight, stageDepth, stageCenterX, 0.34 + stageHeight / 2, stageZ, stageDeckMat, stageGroup);
+    addBox('coveredCourtStageDeck', stageWidth - 0.42, 0.08, stageDepth - 0.42, stageCenterX, 0.34 + stageHeight + 0.04, stageZ, stageAccentMat, stageGroup);
+    addBox('coveredCourtStageBackdrop', stageWidth, 3.7, 0.24, stageCenterX, 0.34 + stageHeight + 1.85, stageZ + stageDepth / 2 - 0.14, stageBackdropMat, stageGroup);
+    addBox('coveredCourtStageBackdropBand', stageWidth - 0.8, 0.45, 0.12, stageCenterX, 3.65, stageZ + stageDepth / 2 - 0.28, roofTrimMat, stageGroup);
+    const stageTrimY = 0.34 + stageHeight + 1.88;
+    const stageTrimZ = stageZ + stageDepth / 2 - 0.30;
+    const stageTrimHeight = 3.75;
+    const stageTrimLeftX = stageLeftX + 0.18;
+    const stageTrimRightX = stageRightX - 0.18;
+    addBox('coveredCourtStageLeftTrim', 0.34, stageTrimHeight, 0.36, stageTrimLeftX, stageTrimY, stageTrimZ, columnMat, stageGroup);
+    addBox('coveredCourtStageRightTrim', 0.34, stageTrimHeight, 0.36, stageTrimRightX, stageTrimY, stageTrimZ, columnMat, stageGroup);
+    [
+        ['Left', stageTrimLeftX],
+        ['Right', stageTrimRightX]
+    ].forEach(([sideName, trimX]) => {
+        addBox(`coveredCourtStage${sideName}TrimBase`, 0.50, 0.16, 0.50, trimX, 0.80, stageTrimZ, columnMat, stageGroup);
+        addBox(`coveredCourtStage${sideName}TrimCap`, 0.46, 0.12, 0.46, trimX, stageTrimY + stageTrimHeight / 2 + 0.06, stageTrimZ, columnMat, stageGroup);
+    });
+    addBox('coveredCourtStageFrontFascia', stageWidth, 0.62, 0.20, stageCenterX, 0.34 + stageHeight / 2, stageFrontZ - 0.08, roofTrimMat, stageGroup);
+
+    // Preserve the earlier side-room positions, but build proper stair
+    // flights instead of two floating slabs.
+    // Limit the rotated stair span to the actual small gap between the stage
+    // front and the side-room front, removing the excess slab beyond it.
+    const stairStepCount = 4;
+    const stairRun = 0.58;
+    const stairRise = stageHeight / stairStepCount;
+    const floorTopY = 0.34;
+    const sideRoomFrontZ = serviceZ - serviceDepth / 2;
+    const stairSpanZ = Math.max(0.8, sideRoomFrontZ - stageFrontZ);
+    const stairPivotZ = (stageFrontZ + sideRoomFrontZ) / 2;
+    const stairHalfLength = stairRun * stairStepCount / 2 + 0.02;
+    [
+        ['Left', stageCenterX - stageWidth / 2 - stairHalfLength],
+        ['Right', stageCenterX + stageWidth / 2 + stairHalfLength]
+    ].forEach(([sideName, stepX]) => {
+        const stairGroup = new THREE.Group();
+        stairGroup.name = `coveredCourtStageStairs${sideName}`;
+        stairGroup.userData.isCoveredCourtPart = true;
+        stairGroup.position.set(stepX, 0, stairPivotZ);
+        // Mirror the quarter-turn so the two flights remain symmetric and
+        // their high ends turn toward the stage opening.
+        stairGroup.rotation.y = stepX < 0 ? Math.PI / 2 : -Math.PI / 2;
+        stageGroup.add(stairGroup);
+
+        for (let stepIndex = 0; stepIndex < stairStepCount; stepIndex++) {
+            const stepHeight = stairRise * (stepIndex + 1);
+            const stepZ = stairRun * (stepIndex + 0.5 - stairStepCount / 2);
+            addBox(
+                `coveredCourtStageStep${sideName}${stepIndex + 1}`,
+                stairSpanZ + 0.04,
+                stepHeight,
+                stairRun + 0.04,
+                0,
+                floorTopY + stepHeight / 2,
+                stepZ,
+                stageBackdropMat,
+                stairGroup
+            );
+        }
+    });
+    coveredCourt.add(stageGroup);
+
+    // Light concrete clearance strip between the court end line and the
+    // stage steps makes the separation readable from above and in perspective.
+    const stageClearanceStartZ = courtOffsetZ + courtLength / 2 + 0.35;
+    const stageClearanceEndZ = stageFrontZ - 0.35;
+    const stageClearanceDepth = stageClearanceEndZ - stageClearanceStartZ;
+    if (stageClearanceDepth > 0.2) {
+        addBox(
+            'coveredCourtStageClearance',
+            Math.min(floorWidth - 2.0, stageWidth + 1.0),
+            0.045,
+            stageClearanceDepth,
+            stageCenterX,
+            0.42,
+            (stageClearanceStartZ + stageClearanceEndZ) / 2,
+            concreteMat
+        );
+    }
+
+    // Broad gable roof with a generous overhang over the open activity area.
+    const roofGroup = new THREE.Group();
+    roofGroup.name = 'coveredCourtRoof';
+    roofGroup.userData.isCoveredCourtPart = true;
+    const roofPanelWidth = roofHalfSpan / Math.cos(roofAngle);
+    const roofPanelCenterY = roofEaveY + (roofHalfSpan * Math.tan(roofAngle)) / 2;
+    const roofPanelDepth = roofDepth + 1.0;
+    const roofLeft = new THREE.Mesh(new THREE.BoxGeometry(roofPanelWidth, 0.22, roofPanelDepth), roofMat);
+    roofLeft.name = 'coveredCourtRoofLeft';
+    roofLeft.rotation.z = roofAngle;
+    roofLeft.position.set(-roofHalfSpan / 2, roofPanelCenterY, 0);
+    roofLeft.castShadow = false;
+    roofGroup.add(roofLeft);
+    const roofRight = new THREE.Mesh(new THREE.BoxGeometry(roofPanelWidth, 0.22, roofPanelDepth), roofMat);
+    roofRight.name = 'coveredCourtRoofRight';
+    roofRight.rotation.z = -roofAngle;
+    roofRight.position.set(roofHalfSpan / 2, roofPanelCenterY, 0);
+    roofRight.castShadow = false;
+    roofGroup.add(roofRight);
+
+    // Light roof trusses stay in the roof zone and around the perimeter so
+    // the playing area remains completely clear. The end frames use a
+    // simple triangular truss pattern without vertical drops into the court.
+    const addRoofTrussMember = (name, start, end, thickness = 0.14) => {
+        const startPoint = new THREE.Vector3(start[0], start[1], start[2]);
+        const endPoint = new THREE.Vector3(end[0], end[1], end[2]);
+        const direction = new THREE.Vector3().subVectors(endPoint, startPoint);
+        const member = new THREE.Mesh(
+            new THREE.BoxGeometry(thickness, thickness, direction.length()),
+            trussMat
+        );
+        member.name = name;
+        member.position.copy(startPoint).add(endPoint).multiplyScalar(0.5);
+        member.quaternion.setFromUnitVectors(
+            new THREE.Vector3(0, 0, 1),
+            direction.normalize()
+        );
+        member.castShadow = false;
+        member.receiveShadow = true;
+        member.userData.isCoveredCourtPart = true;
+        roofGroup.add(member);
+        return member;
+    };
+
+    const trussHalfSpan = columnSideX;
+    const trussEaveY = roofEaveY - 0.08;
+    const trussRidgeY = roofRidgeY - 0.12;
+    // Keep the truss depth shallow and above the columns, so its lattice reads
+    // as roof structure without dropping into the basketball playing volume.
+    const trussDepth = 0.58;
+    const trussBottomEaveY = trussEaveY - trussDepth;
+    const trussBottomRidgeY = trussRidgeY - trussDepth;
+    const roofTrussFrameZs = columnZPositions;
+    const roofTrussPanelCount = 5;
+
+    const pointOnSlope = (side, fraction, yOffset = 0, z = 0) => {
+        const x = side * trussHalfSpan * (1 - fraction);
+        const topY = trussEaveY + (trussRidgeY - trussEaveY) * fraction;
+        return [x, topY + yOffset, z];
+    };
+    const pointOnBottomSlope = (side, fraction, z = 0) => {
+        const x = side * trussHalfSpan * (1 - fraction);
+        const bottomY = trussBottomEaveY + (trussBottomRidgeY - trussBottomEaveY) * fraction;
+        return [x, bottomY, z];
+    };
+
+    roofTrussFrameZs.forEach((z, frameIndex) => {
+        const frameName = `coveredCourtRoofTruss${frameIndex + 1}`;
+        const leftEave = pointOnSlope(-1, 0, 0, z);
+        const leftRidge = pointOnSlope(-1, 1, 0, z);
+        const rightRidge = pointOnSlope(1, 1, 0, z);
+        const rightEave = pointOnSlope(1, 0, 0, z);
+        const leftBottomEave = pointOnBottomSlope(-1, 0, z);
+        const leftBottomRidge = pointOnBottomSlope(-1, 1, z);
+        const rightBottomRidge = pointOnBottomSlope(1, 1, z);
+        const rightBottomEave = pointOnBottomSlope(1, 0, z);
+
+        addRoofTrussMember(`${frameName}TopChordLeft`, leftEave, leftRidge, 0.14);
+        addRoofTrussMember(`${frameName}TopChordRight`, rightRidge, rightEave, 0.14);
+        addRoofTrussMember(`${frameName}BottomChordLeft`, leftBottomEave, leftBottomRidge, 0.11);
+        addRoofTrussMember(`${frameName}BottomChordRight`, rightBottomRidge, rightBottomEave, 0.11);
+
+        for (let panelIndex = 0; panelIndex < roofTrussPanelCount; panelIndex++) {
+            const startFraction = panelIndex / roofTrussPanelCount;
+            const endFraction = (panelIndex + 1) / roofTrussPanelCount;
+            const leftTopStart = pointOnSlope(-1, startFraction, -0.03, z);
+            const leftTopEnd = pointOnSlope(-1, endFraction, -0.03, z);
+            const leftBottomStart = pointOnBottomSlope(-1, startFraction, z);
+            const leftBottomEnd = pointOnBottomSlope(-1, endFraction, z);
+            const rightTopStart = pointOnSlope(1, startFraction, -0.03, z);
+            const rightTopEnd = pointOnSlope(1, endFraction, -0.03, z);
+            const rightBottomStart = pointOnBottomSlope(1, startFraction, z);
+            const rightBottomEnd = pointOnBottomSlope(1, endFraction, z);
+
+            addRoofTrussMember(
+                `${frameName}LeftDiagonal${panelIndex + 1}`,
+                panelIndex % 2 === 0 ? leftBottomStart : leftTopStart,
+                panelIndex % 2 === 0 ? leftTopEnd : leftBottomEnd,
+                0.085
+            );
+            addRoofTrussMember(
+                `${frameName}RightDiagonal${panelIndex + 1}`,
+                panelIndex % 2 === 0 ? rightTopStart : rightBottomStart,
+                panelIndex % 2 === 0 ? rightBottomEnd : rightTopEnd,
+                0.085
+            );
+        }
+    });
+
+    // Match the room railing language on the two long roof-edge steels:
+    // a compact main rail, a cap rail, a slim upper tube, and short repeated
+    // uprights. This replaces the plain single-member appearance without
+    // adding anything inside the playing area.
+    const addRoomStyleEaveRail = (name, x) => {
+        const railLength = columnFrontBackZ * 2;
+        addBox(
+            name,
+            0.14,
+            0.30,
+            railLength,
+            x,
+            trussEaveY - 0.18,
+            0,
+            trussMat,
+            roofGroup
+        );
+        addBox(
+            `${name}TopRail`,
+            0.18,
+            0.10,
+            railLength,
+            x,
+            trussEaveY + 0.02,
+            0,
+            roofTrimMat,
+            roofGroup
+        );
+
+        const upperTube = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.055, 0.055, railLength, 12),
+            trussMat
+        );
+        upperTube.name = `${name}UpperTube`;
+        upperTube.rotation.x = Math.PI / 2;
+        upperTube.position.set(x, trussEaveY + 0.19, 0);
+        upperTube.castShadow = false;
+        upperTube.receiveShadow = true;
+        upperTube.userData.isCoveredCourtPart = true;
+        roofGroup.add(upperTube);
+
+        columnZPositions.slice(1, -1).forEach((z, index) => {
+            addBox(
+                `${name}Upright${index + 1}`,
+                0.10,
+                0.24,
+                0.10,
+                x,
+                trussEaveY + 0.10,
+                z,
+                trussMat,
+                roofGroup
+            );
+        });
+    };
+
+    addRoomStyleEaveRail('coveredCourtTrussEaveLeft', -trussHalfSpan);
+    addRoomStyleEaveRail('coveredCourtTrussEaveRight', trussHalfSpan);
+
+    addBox('coveredCourtRoofRidge', 0.38, 0.26, roofPanelDepth + 0.18, 0, roofRidgeY + 0.08, 0, roofTrimMat, roofGroup);
+    addBox('coveredCourtRoofGutterLeft', 0.34, 0.12, roofPanelDepth + 0.20, -roofHalfSpan, roofEaveY - 0.10, 0, roofTrimMat, roofGroup);
+    addBox('coveredCourtRoofGutterRight', 0.34, 0.12, roofPanelDepth + 0.20, roofHalfSpan, roofEaveY - 0.10, 0, roofTrimMat, roofGroup);
+
+    [-1, 1].forEach((end) => {
+        const endBeamLeft = addBox(
+            `coveredCourtRoofEndLeft${end > 0 ? 'Back' : 'Front'}`,
+            roofPanelWidth + 0.20,
+            0.18,
+            0.16,
+            -roofHalfSpan / 2,
+            roofPanelCenterY,
+            end * roofPanelDepth / 2,
+            roofTrimMat,
+            roofGroup
+        );
+        endBeamLeft.rotation.z = roofAngle;
+        const endBeamRight = addBox(
+            `coveredCourtRoofEndRight${end > 0 ? 'Back' : 'Front'}`,
+            roofPanelWidth + 0.20,
+            0.18,
+            0.16,
+            roofHalfSpan / 2,
+            roofPanelCenterY,
+            end * roofPanelDepth / 2,
+            roofTrimMat,
+            roofGroup
+        );
+        endBeamRight.rotation.z = -roofAngle;
+    });
+
+    // Raised central clerestory creates the layered roof silhouette and a
+    // high ventilation band beneath it.
+    const clerestoryWidth = 5.2;
+    const clerestoryHalfSpan = clerestoryWidth / 2;
+    const clerestoryAngle = 9 * Math.PI / 180;
+    const clerestoryEaveY = roofRidgeY + 0.48;
+    const clerestoryRidgeY = clerestoryEaveY + clerestoryHalfSpan * Math.tan(clerestoryAngle);
+    const clerestoryPanelWidth = clerestoryHalfSpan / Math.cos(clerestoryAngle);
+    const clerestoryPanelCenterY = clerestoryEaveY + (clerestoryHalfSpan * Math.tan(clerestoryAngle)) / 2;
+    const clerestoryDepth = roofDepth * 0.76;
+    addBox('coveredCourtClerestoryBeam', clerestoryWidth - 0.65, 0.22, clerestoryDepth, 0, roofRidgeY + 0.35, 0, roofTrimMat, roofGroup);
+    const clerestoryLeft = addBox('coveredCourtClerestoryRoofLeft', clerestoryPanelWidth, 0.18, clerestoryDepth + 0.28, -clerestoryHalfSpan / 2, clerestoryPanelCenterY, 0, roofMat, roofGroup);
+    clerestoryLeft.rotation.z = clerestoryAngle;
+    const clerestoryRight = addBox('coveredCourtClerestoryRoofRight', clerestoryPanelWidth, 0.18, clerestoryDepth + 0.28, clerestoryHalfSpan / 2, clerestoryPanelCenterY, 0, roofMat, roofGroup);
+    clerestoryRight.rotation.z = -clerestoryAngle;
+    addBox('coveredCourtClerestoryRidge', 0.26, 0.16, clerestoryDepth + 0.36, 0, clerestoryRidgeY + 0.05, 0, roofTrimMat, roofGroup);
+
+    coveredCourt.add(roofGroup);
+
+    // A short front approach leaves an open circulation apron around the
+    // pavilion on every other side.
+
+    scene.add(coveredCourt);
+    addUniqueRegistryItem(objects, coveredCourt);
+    window.coveredCourtGroup = coveredCourt;
+    if (window.roofGroups && !window.roofGroups.includes(roofGroup)) window.roofGroups.push(roofGroup);
+}
+
+function createCampusPerimeterFence() {
+    if (scene.getObjectByName('campusPerimeterFence')) return;
+
+    const campusParts = [
+        scene.getObjectByName('buildingUnitLeft'),
+        scene.getObjectByName('buildingUnitRight'),
+        scene.getObjectByName('buildingUnitTopLeft'),
+        scene.getObjectByName('buildingUnitTopRight'),
+        scene.getObjectByName('coveredCourt')
+    ].filter(Boolean);
+    if (campusParts.length === 0) return;
+
+    scene.updateMatrixWorld(true);
+    const campusBounds = new THREE.Box3();
+    campusParts.forEach((part) => campusBounds.expandByObject(part));
+
+    const fenceGroup = new THREE.Group();
+    fenceGroup.name = 'campusPerimeterFence';
+    fenceGroup.userData.isComponent = true;
+    fenceGroup.userData.type = 'campusPerimeterFence';
+
+    const fenceMat = new THREE.MeshStandardMaterial({
+        color: 0x252a2a,
+        roughness: 0.56,
+        metalness: 0.58
+    });
+    const fenceWallMat = new THREE.MeshStandardMaterial({
+        color: 0xa7a8a3,
+        roughness: 0.92,
+        metalness: 0.02
+    });
+    const fencePostMat = new THREE.MeshStandardMaterial({
+        color: 0xd7d1bd,
+        roughness: 0.88,
+        metalness: 0.03
+    });
+    const fencePostAccentMat = new THREE.MeshStandardMaterial({
+        color: 0xb7b3a6,
+        roughness: 0.90,
+        metalness: 0.02
+    });
+
+    const fenceOffsetX = 0.25;
+    const fenceOffsetZ = 3.5;
+    // Remove one complete fence bay at both left and right ends of the
+    // front and back runs.  The side runs then shorten automatically because
+    // they use these adjusted X bounds.
+    const removedFenceBayWidth = 10.0;
+    const minX = campusBounds.min.x - fenceOffsetX + removedFenceBayWidth;
+    const maxX = campusBounds.max.x + fenceOffsetX - removedFenceBayWidth;
+    // Add one regular fence bay toward the front.  The side runs use this
+    // new front boundary, so the added bay stays connected to the perimeter.
+    const frontFenceExtension = 10.0;
+    const minZ = campusBounds.min.z - fenceOffsetZ - frontFenceExtension;
+    const maxZ = campusBounds.max.z + fenceOffsetZ;
+    const campusCenterX = (minX + maxX) / 2;
+    // Only the concrete base wall is tripled; keep the black steel grille at
+    // its original height for a lighter, more realistic campus boundary.
+    const fenceHeight = 4.40;
+    const fenceBaseY = 0.02;
+    const fenceWallHeight = 2.70;
+    const fenceWallDepth = 0.36;
+    const fencePostWidth = 0.42;
+    const fenceRailThickness = 0.14;
+    const fenceBarThickness = 0.085;
+    // Each entrance opening is two regular fence bays wide.
+    const gateWidth = Math.min(removedFenceBayWidth * 2, (maxX - minX) * 0.20);
+    const standardGateWidth = gateWidth;
+    const gateCenterOffset = Math.min((maxX - minX) * 0.25, standardGateWidth * 3.2);
+    const leftGateCenterX = campusCenterX - gateCenterOffset;
+    const rightGateCenterX = campusCenterX + gateCenterOffset;
+    const leftGateStartX = leftGateCenterX - gateWidth / 2;
+    const leftGateEndX = leftGateCenterX + gateWidth / 2;
+    const rightGateStartX = rightGateCenterX - gateWidth / 2;
+    const rightGateEndX = rightGateCenterX + gateWidth / 2;
+    const fenceRailYs = [
+        fenceBaseY + fenceWallHeight + 0.06,
+        fenceBaseY + fenceWallHeight + 0.34,
+        fenceBaseY + fenceWallHeight + 1.28,
+        fenceBaseY + fenceHeight - 0.08
+    ];
+
+    const addFenceBox = (name, width, height, depth, x, y, z, material, isObstacle = false) => {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+        mesh.name = name;
+        mesh.position.set(x, y, z);
+        mesh.receiveShadow = true;
+        mesh.castShadow = false;
+        mesh.userData.isCampusFencePart = true;
+        if (isObstacle) {
+            mesh.userData.isWalkObstacle = true;
+            addUniqueRegistryItem(obstacles, mesh);
+        }
+        fenceGroup.add(mesh);
+        return mesh;
+    };
+
+    const distributeFence = (start, end, spacing) => {
+        const count = Math.max(1, Math.ceil(Math.abs(end - start) / spacing));
+        return Array.from({ length: count + 1 }, (_, index) => start + (end - start) * (index / count));
+    };
+
+    const addFenceRun = (name, orientation, start, end, fixed) => {
+        if (Math.abs(end - start) < 0.25) return;
+        const horizontal = orientation === 'x';
+        const length = Math.abs(end - start);
+        const center = (start + end) / 2;
+
+        addFenceBox(
+            `${name}ConcreteBase`,
+            horizontal ? length : fenceWallDepth,
+            fenceWallHeight,
+            horizontal ? fenceWallDepth : length,
+            horizontal ? center : fixed,
+            fenceBaseY + fenceWallHeight / 2,
+            horizontal ? fixed : center,
+            fenceWallMat,
+            true
+        );
+
+        fenceRailYs.forEach((railY, railIndex) => {
+            addFenceBox(
+                `${name}Rail${railIndex + 1}`,
+                horizontal ? length : fenceRailThickness,
+                fenceRailThickness,
+                horizontal ? fenceRailThickness : length,
+                horizontal ? center : fixed,
+                railY,
+                horizontal ? fixed : center,
+                fenceMat
+            );
+        });
+
+        distributeFence(start, end, 0.85).forEach((position, barIndex) => {
+            addFenceBox(
+                `${name}Bar${barIndex + 1}`,
+                fenceBarThickness,
+                fenceHeight - fenceWallHeight - 0.12,
+                fenceBarThickness,
+                horizontal ? position : fixed,
+                fenceBaseY + fenceWallHeight + (fenceHeight - fenceWallHeight - 0.12) / 2,
+                horizontal ? fixed : position,
+                fenceMat
+            );
+        });
+    };
+
+    // One continuous campus perimeter with two clear front entrances, one on
+    // each side. The covered court remains inside the boundary.
+    addFenceRun('campusFenceLeft', 'z', minZ, maxZ, minX);
+    addFenceRun('campusFenceRight', 'z', minZ, maxZ, maxX);
+    addFenceRun('campusFenceBack', 'x', minX, maxX, maxZ);
+    addFenceRun('campusFenceFrontOuterLeft', 'x', minX, leftGateStartX, minZ);
+    addFenceRun('campusFenceFrontCenter', 'x', leftGateEndX, rightGateStartX, minZ);
+    addFenceRun('campusFenceFrontOuterRight', 'x', rightGateEndX, maxX, minZ);
+
+    // Short concrete return walls guide visitors into each entrance without
+    // narrowing the two-bay openings themselves.
+    const entranceReturnDepth = 4.0;
+    [
+        ['Left', leftGateStartX, leftGateEndX],
+        ['Right', rightGateStartX, rightGateEndX]
+    ].forEach(([entranceName, gateStartX, gateEndX]) => {
+        [
+            ['Left', gateStartX],
+            ['Right', gateEndX]
+        ].forEach(([sideName, wallX]) => {
+            addFenceBox(
+                `campusEntrance${entranceName}${sideName}ReturnWall`,
+                fenceWallDepth,
+                fenceHeight,
+                entranceReturnDepth,
+                wallX,
+                fenceBaseY + fenceHeight / 2,
+                minZ + entranceReturnDepth / 2,
+                fenceWallMat,
+                true
+            );
+        });
+    });
+
+    // Rotate the short extension 90 degrees at the existing inner post.  The
+    // pair at each entrance points toward that entrance's own opening.
+    const entranceRotatedExtension = 3.0;
+    [
+        ['Left', leftGateStartX, leftGateEndX],
+        ['Right', rightGateStartX, rightGateEndX]
+    ].forEach(([entranceName, gateStartX, gateEndX]) => {
+        [
+            ['Left', gateStartX, 1],
+            ['Right', gateEndX, -1]
+        ].forEach(([sideName, wallX, direction]) => {
+            addFenceBox(
+                `campusEntrance${entranceName}${sideName}RotatedWallExtension`,
+                entranceRotatedExtension,
+                fenceHeight,
+                fenceWallDepth,
+                wallX + direction * entranceRotatedExtension / 2,
+                fenceBaseY + fenceHeight / 2,
+                minZ + entranceReturnDepth,
+                fenceWallMat,
+                true
+            );
+        });
+    });
+
+    // Triangular wall caps sit above the two side-wall booths of each
+    // entrance/exit, matching the mirrored gateway silhouette.
+    const entranceTriangleHeight = 2.5;
+    const entranceTriangleDepth = fenceWallDepth;
+    [
+        ['Left', leftGateStartX, 1],
+        ['Right', rightGateEndX, -1]
+    ].forEach(([entranceName, wallX, direction], index) => {
+        const triangleShape = new THREE.Shape();
+        triangleShape.moveTo(-entranceRotatedExtension / 2, 0);
+        triangleShape.lineTo(entranceRotatedExtension / 2, 0);
+        if (direction > 0) {
+            // Left entrance: vertical leg at the inward/right end.
+            triangleShape.lineTo(entranceRotatedExtension / 2, entranceTriangleHeight);
+        } else {
+            // Right entrance: mirrored vertical leg at the inward/left end.
+            triangleShape.lineTo(-entranceRotatedExtension / 2, entranceTriangleHeight);
+        }
+        triangleShape.closePath();
+
+        const triangleWall = new THREE.Mesh(
+            new THREE.ExtrudeGeometry(triangleShape, {
+                depth: entranceTriangleDepth,
+                bevelEnabled: false
+            }),
+            fenceWallMat
+        );
+        triangleWall.name = `campusEntrance${entranceName}${index + 1}TriangleWall`;
+        triangleWall.position.set(
+            wallX + direction * entranceRotatedExtension / 2,
+            fenceBaseY + fenceHeight,
+            minZ + entranceReturnDepth - entranceTriangleDepth / 2
+        );
+        triangleWall.castShadow = true;
+        triangleWall.receiveShadow = true;
+        triangleWall.userData.isCampusFencePart = true;
+        fenceGroup.add(triangleWall);
+    });
+
+    const fencePostKeys = new Set();
+    const addFencePost = (name, x, z, postWidth = fencePostWidth) => {
+        const key = `${x.toFixed(3)}:${z.toFixed(3)}`;
+        if (fencePostKeys.has(key)) return;
+        fencePostKeys.add(key);
+
+        const postHeight = fenceHeight + 0.16;
+        addFenceBox(
+            name,
+            postWidth,
+            postHeight,
+            postWidth,
+            x,
+            fenceBaseY + postHeight / 2,
+            z,
+            fencePostMat,
+            true
+        );
+        addFenceBox(
+            `${name}Base`,
+            postWidth + 0.18,
+            0.16,
+            postWidth + 0.18,
+            x,
+            fenceBaseY + 0.08,
+            z,
+            fencePostMat,
+            true
+        );
+        addFenceBox(
+            `${name}Cap`,
+            postWidth + 0.14,
+            0.14,
+            postWidth + 0.14,
+            x,
+            fenceBaseY + postHeight + 0.07,
+            z,
+            fencePostMat
+        );
+        [0.28, 0.52, 0.76].forEach((bandOffset, bandIndex) => {
+            addFenceBox(
+                `${name}Band${bandIndex + 1}`,
+                postWidth + 0.05,
+                0.06,
+                postWidth + 0.05,
+                x,
+                fenceBaseY + bandOffset,
+                z,
+                fencePostAccentMat
+            );
+        });
+    };
+
+    // Finish the inward end of every entrance return wall with a matching
+    // full-height post; the front ends already share the entrance posts.
+    [
+        ['Left', leftGateStartX, leftGateEndX],
+        ['Right', rightGateStartX, rightGateEndX]
+    ].forEach(([entranceName, gateStartX, gateEndX]) => {
+        [
+            ['Left', gateStartX],
+            ['Right', gateEndX]
+        ].forEach(([sideName, postX]) => {
+            addFencePost(
+                `campusEntrance${entranceName}${sideName}InnerPost`,
+                postX,
+                minZ + entranceReturnDepth
+            );
+        });
+    });
+
+    [
+        ['Left', leftGateStartX, leftGateEndX],
+        ['Right', rightGateStartX, rightGateEndX]
+    ].forEach(([entranceName, gateStartX, gateEndX]) => {
+        [
+            ['Left', gateStartX, 1],
+            ['Right', gateEndX, -1]
+        ].forEach(([sideName, wallX, direction]) => {
+            addFencePost(
+                `campusEntrance${entranceName}${sideName}RotatedExtensionEndPost`,
+                wallX + direction * entranceRotatedExtension,
+                minZ + entranceReturnDepth
+            );
+        });
+    });
+
+    // Add a compact pedestrian gate beside the pointed triangle wall at each
+    // entrance, while keeping the rest of each opening clear for vehicles.
+    const smallGateWidth = Math.min(3.2, gateWidth * 0.30);
+    const smallGateDepth = 0.14;
+    // Reuse the triangle extension end post as the single gate's side post;
+    // this prevents two concrete posts from appearing side by side.
+    const smallGateSideGap = 0.0;
+    const smallGateInnerPostWidth = fencePostWidth;
+    const gatePostClearance = 0.06;
+    const smallGatePanelWidth = Math.max(
+        0.60,
+        smallGateWidth - smallGateInnerPostWidth - gatePostClearance * 2
+    );
+    const smallGateBottomY = fenceBaseY;
+    const smallGatePanelHeight = 2.05;
+    const smallGateOpeningBottomY = smallGateBottomY + smallGatePanelHeight;
+    const smallGateTopY = fenceBaseY + fenceHeight - 0.08;
+    const smallGateHeight = smallGateTopY - smallGateBottomY;
+    const smallGateOpeningHeight = smallGateTopY - smallGateOpeningBottomY;
+    const smallGateRailYs = [
+        smallGateOpeningBottomY,
+        fenceBaseY + 3.18,
+        smallGateTopY
+    ];
+
+    const addSmallPedestrianGate = (entranceName, outerX, direction) => {
+        // Keep the pedestrian gate beside the pointed wall, inside the return,
+        // matching the earlier entrance arrangement.
+        const triangleInnerX = outerX + direction * entranceRotatedExtension;
+        const gateStartX = triangleInnerX + direction * smallGateSideGap;
+        const centerX = gateStartX + direction * smallGateWidth / 2;
+        const gateZ = minZ + entranceReturnDepth;
+
+        addFenceBox(
+            `campusEntrance${entranceName}SmallGateSolidBottom`,
+            smallGatePanelWidth,
+            smallGatePanelHeight,
+            smallGateDepth,
+            centerX,
+            smallGateBottomY + smallGatePanelHeight / 2,
+            gateZ,
+            fenceMat
+        );
+
+        smallGateRailYs.forEach((railY, railIndex) => {
+            addFenceBox(
+                `campusEntrance${entranceName}SmallGateRail${railIndex + 1}`,
+                smallGatePanelWidth,
+                fenceRailThickness,
+                smallGateDepth,
+                centerX,
+                railY,
+                gateZ,
+                fenceMat
+            );
+        });
+
+        addFenceBox(
+            `campusEntrance${entranceName}SmallGateLeftStile`,
+            fenceBarThickness + 0.035,
+            smallGateHeight,
+            smallGateDepth,
+            centerX - smallGatePanelWidth / 2,
+            smallGateBottomY + smallGateHeight / 2,
+            gateZ,
+            fenceMat
+        );
+        addFenceBox(
+            `campusEntrance${entranceName}SmallGateRightStile`,
+            fenceBarThickness + 0.035,
+            smallGateHeight,
+            smallGateDepth,
+            centerX + smallGatePanelWidth / 2,
+            smallGateBottomY + smallGateHeight / 2,
+            gateZ,
+            fenceMat
+        );
+
+        distributeFence(-smallGatePanelWidth / 2 + 0.38, smallGatePanelWidth / 2 - 0.38, 0.62).forEach((offset, barIndex) => {
+            addFenceBox(
+                `campusEntrance${entranceName}SmallGateBar${barIndex + 1}`,
+                fenceBarThickness,
+                smallGateOpeningHeight,
+                smallGateDepth,
+                centerX + offset,
+                smallGateOpeningBottomY + smallGateOpeningHeight / 2,
+                gateZ,
+                fenceMat
+            );
+        });
+
+        addFencePost(
+            `campusEntrance${entranceName}SmallGateTriangleSidePost`,
+            gateStartX,
+            gateZ
+        );
+        addFencePost(
+            `campusEntrance${entranceName}SmallGateInnerPost`,
+            gateStartX + direction * smallGateWidth,
+            gateZ,
+            smallGateInnerPostWidth
+        );
+    };
+
+    addSmallPedestrianGate('Left', leftGateStartX, 1);
+    addSmallPedestrianGate('Right', rightGateEndX, -1);
+
+    // The wider vehicle opening beside each small gate uses a two-leaf
+    // black steel grille with a framed center divider, matching the reference.
+    const doubleGateBottomY = fenceBaseY + 0.10;
+    const doubleGateTopY = fenceBaseY + fenceHeight - 0.08;
+    const doubleGateHeight = doubleGateTopY - doubleGateBottomY;
+    const doubleGateRailYs = [
+        doubleGateBottomY,
+        fenceBaseY + 1.48,
+        fenceBaseY + 2.92,
+        doubleGateTopY
+    ];
+    const doubleGateLeafGap = 0.08;
+    const doubleGateCenterDividerWidth = fenceBarThickness + 0.14;
+    // Compensate for the oblique editor view so the center divider reads at
+    // the visual midpoint of the opening, matching the reference image.
+    const doubleGateSplitRatio = 0.37;
+
+    const addDoubleGate = (entranceName, outerX, direction) => {
+        // Use the single gate's inner post and the opposite concrete post as
+        // the two limits, so the double gate never overlaps the single gate.
+        const triangleInnerX = outerX + direction * entranceRotatedExtension;
+        const singleGateStartX = triangleInnerX + direction * smallGateSideGap;
+        const singleGateInnerPostX = singleGateStartX + direction * smallGateWidth;
+        const oppositeConcretePostX = outerX + direction * gateWidth;
+        const doubleGateMinX = Math.min(singleGateInnerPostX, oppositeConcretePostX);
+        const doubleGateMaxX = Math.max(singleGateInnerPostX, oppositeConcretePostX);
+        // Keep every gate frame inside the post faces instead of letting the
+        // rails and stiles pass through the concrete boundary posts.
+        const doubleGateOpeningMinX = doubleGateMinX + fencePostWidth / 2 + gatePostClearance;
+        const doubleGateOpeningMaxX = doubleGateMaxX - fencePostWidth / 2 - gatePostClearance;
+        const doubleGateSpanWidth = doubleGateOpeningMaxX - doubleGateOpeningMinX;
+        const splitRatio = direction > 0
+            ? doubleGateSplitRatio
+            : 1 - doubleGateSplitRatio;
+        const doubleGateCenterX = doubleGateOpeningMinX + doubleGateSpanWidth * splitRatio;
+        const leftLeafWidth = doubleGateCenterX - doubleGateOpeningMinX - doubleGateLeafGap / 2;
+        const rightLeafWidth = doubleGateOpeningMaxX - doubleGateCenterX - doubleGateLeafGap / 2;
+        const gateZ = minZ + entranceReturnDepth;
+        const leftLeafCenterX = doubleGateOpeningMinX + leftLeafWidth / 2;
+        const rightLeafCenterX = doubleGateOpeningMaxX - rightLeafWidth / 2;
+        const addDoubleGateLeaf = (leafName, centerX, leafWidth) => {
+            doubleGateRailYs.forEach((railY, railIndex) => {
+                addFenceBox(
+                    `campusEntrance${entranceName}${leafName}Rail${railIndex + 1}`,
+                    leafWidth,
+                    fenceRailThickness,
+                    smallGateDepth,
+                    centerX,
+                    railY,
+                    gateZ,
+                    fenceMat
+                );
+            });
+
+            addFenceBox(
+                `campusEntrance${entranceName}${leafName}LeftStile`,
+                fenceBarThickness + 0.035,
+                doubleGateHeight,
+                smallGateDepth,
+                centerX - leafWidth / 2,
+                doubleGateBottomY + doubleGateHeight / 2,
+                gateZ,
+                fenceMat
+            );
+            addFenceBox(
+                `campusEntrance${entranceName}${leafName}RightStile`,
+                fenceBarThickness + 0.035,
+                doubleGateHeight,
+                smallGateDepth,
+                centerX + leafWidth / 2,
+                doubleGateBottomY + doubleGateHeight / 2,
+                gateZ,
+                fenceMat
+            );
+
+            distributeFence(-leafWidth / 2 + 0.38, leafWidth / 2 - 0.38, 0.72).forEach((offset, barIndex) => {
+                addFenceBox(
+                    `campusEntrance${entranceName}${leafName}Bar${barIndex + 1}`,
+                    fenceBarThickness,
+                    doubleGateHeight,
+                    smallGateDepth,
+                    centerX + offset,
+                    doubleGateBottomY + doubleGateHeight / 2,
+                    gateZ,
+                    fenceMat
+                );
+            });
+        };
+
+        addDoubleGateLeaf('DoubleGateLeftLeaf', leftLeafCenterX, leftLeafWidth);
+        addDoubleGateLeaf('DoubleGateRightLeaf', rightLeafCenterX, rightLeafWidth);
+        addFenceBox(
+            `campusEntrance${entranceName}DoubleGateCenterDivider`,
+            doubleGateCenterDividerWidth,
+            doubleGateHeight,
+            smallGateDepth,
+            doubleGateCenterX,
+            doubleGateBottomY + doubleGateHeight / 2,
+            gateZ,
+            fenceMat
+        );
+    };
+
+    addDoubleGate('Left', leftGateStartX, 1);
+    addDoubleGate('Right', rightGateEndX, -1);
+
+    const addFencePostLine = (name, orientation, start, end, fixed) => {
+        distributeFence(start, end, 10.0).forEach((position, index) => {
+            addFencePost(
+                `${name}${index + 1}`,
+                orientation === 'x' ? position : fixed,
+                orientation === 'x' ? fixed : position
+            );
+        });
+    };
+
+    addFencePostLine('campusFenceLeftPost', 'z', minZ, maxZ, minX);
+    addFencePostLine('campusFenceRightPost', 'z', minZ, maxZ, maxX);
+    addFencePostLine('campusFenceBackPost', 'x', minX, maxX, maxZ);
+    addFencePostLine('campusFenceFrontOuterLeftPost', 'x', minX, leftGateStartX, minZ);
+    addFencePostLine('campusFenceFrontCenterPost', 'x', leftGateEndX, rightGateStartX, minZ);
+    addFencePostLine('campusFenceFrontOuterRightPost', 'x', rightGateEndX, maxX, minZ);
+
+    scene.add(fenceGroup);
+    addUniqueRegistryItem(objects, fenceGroup);
+    window.campusPerimeterFence = fenceGroup;
+}
 
 function liftBuildingStackToGround() {
     const firstFloorBaseY = 0.00;
@@ -3600,7 +5129,9 @@ function getBuildingVisibilityConfigs() {
         { id: 'chk-building-left', name: 'buildingUnitLeft' },
         { id: 'chk-building-right', name: 'buildingUnitRight' },
         { id: 'chk-building-back-left', name: 'buildingUnitTopLeft' },
-        { id: 'chk-building-back-right', name: 'buildingUnitTopRight' }
+        { id: 'chk-building-back-right', name: 'buildingUnitTopRight' },
+        { id: 'chk-covered-court', name: 'coveredCourt' },
+        { id: 'chk-campus-fence', name: 'campusPerimeterFence' }
     ];
 }
 
