@@ -360,6 +360,7 @@ function init() {
     createUShapedBuildingLayout();
     createCentralCoveredCourt();
     createCampusPerimeterFence();
+    createGateSecurityCheckpoints();
     applyComponentVisibilityToggles();
     applyBuildingVisibilityToggles();
 }
@@ -3164,9 +3165,7 @@ function createCentralCoveredCourt() {
     if (window.roofGroups && !window.roofGroups.includes(roofGroup)) window.roofGroups.push(roofGroup);
 }
 
-function createCampusPerimeterFence() {
-    if (scene.getObjectByName('campusPerimeterFence')) return;
-
+function getCampusFenceLayout() {
     const campusParts = [
         scene.getObjectByName('buildingUnitLeft'),
         scene.getObjectByName('buildingUnitRight'),
@@ -3174,11 +3173,75 @@ function createCampusPerimeterFence() {
         scene.getObjectByName('buildingUnitTopRight'),
         scene.getObjectByName('coveredCourt')
     ].filter(Boolean);
-    if (campusParts.length === 0) return;
+    if (campusParts.length === 0) return null;
 
     scene.updateMatrixWorld(true);
     const campusBounds = new THREE.Box3();
     campusParts.forEach((part) => campusBounds.expandByObject(part));
+
+    const fenceOffsetX = 0.25;
+    const fenceOffsetZ = 3.5;
+    const removedFenceBayWidth = 10.0;
+    const minX = campusBounds.min.x - fenceOffsetX + removedFenceBayWidth;
+    const maxX = campusBounds.max.x + fenceOffsetX - removedFenceBayWidth;
+    const frontFenceExtension = 10.0;
+    const minZ = campusBounds.min.z - fenceOffsetZ - frontFenceExtension;
+    const maxZ = campusBounds.max.z + fenceOffsetZ;
+    const campusCenterX = (minX + maxX) / 2;
+    const fenceHeight = 4.40;
+    const fenceBaseY = 0.02;
+    const fencePostWidth = 0.42;
+    const fenceBarThickness = 0.085;
+    const gateWidth = Math.min(removedFenceBayWidth * 2, (maxX - minX) * 0.20);
+    const gateCenterOffset = Math.min((maxX - minX) * 0.25, gateWidth * 3.2);
+    const leftGateCenterX = campusCenterX - gateCenterOffset;
+    const rightGateCenterX = campusCenterX + gateCenterOffset;
+    const leftGateStartX = leftGateCenterX - gateWidth / 2;
+    const leftGateEndX = leftGateCenterX + gateWidth / 2;
+    const rightGateStartX = rightGateCenterX - gateWidth / 2;
+    const rightGateEndX = rightGateCenterX + gateWidth / 2;
+
+    return {
+        minX,
+        maxX,
+        minZ,
+        maxZ,
+        fenceHeight,
+        fenceBaseY,
+        fencePostWidth,
+        fenceBarThickness,
+        gateWidth,
+        leftGateStartX,
+        leftGateEndX,
+        rightGateStartX,
+        rightGateEndX,
+        entranceReturnDepth: 4.0,
+        entranceRotatedExtension: 3.0
+    };
+}
+
+function createCampusPerimeterFence() {
+    if (scene.getObjectByName('campusPerimeterFence')) return;
+
+    const layout = getCampusFenceLayout();
+    if (!layout) return;
+    const {
+        minX,
+        maxX,
+        minZ,
+        maxZ,
+        fenceHeight,
+        fenceBaseY,
+        fencePostWidth,
+        fenceBarThickness,
+        gateWidth,
+        leftGateStartX,
+        leftGateEndX,
+        rightGateStartX,
+        rightGateEndX,
+        entranceReturnDepth,
+        entranceRotatedExtension
+    } = layout;
 
     const fenceGroup = new THREE.Group();
     fenceGroup.name = 'campusPerimeterFence';
@@ -3206,39 +3269,12 @@ function createCampusPerimeterFence() {
         metalness: 0.02
     });
 
-    const fenceOffsetX = 0.25;
-    const fenceOffsetZ = 3.5;
-    // Remove one complete fence bay at both left and right ends of the
-    // front and back runs.  The side runs then shorten automatically because
-    // they use these adjusted X bounds.
-    const removedFenceBayWidth = 10.0;
-    const minX = campusBounds.min.x - fenceOffsetX + removedFenceBayWidth;
-    const maxX = campusBounds.max.x + fenceOffsetX - removedFenceBayWidth;
-    // Add one regular fence bay toward the front.  The side runs use this
-    // new front boundary, so the added bay stays connected to the perimeter.
-    const frontFenceExtension = 10.0;
-    const minZ = campusBounds.min.z - fenceOffsetZ - frontFenceExtension;
-    const maxZ = campusBounds.max.z + fenceOffsetZ;
-    const campusCenterX = (minX + maxX) / 2;
     // Only the concrete base wall is tripled; keep the black steel grille at
     // its original height for a lighter, more realistic campus boundary.
-    const fenceHeight = 4.40;
-    const fenceBaseY = 0.02;
     const fenceWallHeight = 2.70;
     const fenceWallDepth = 0.36;
-    const fencePostWidth = 0.42;
     const fenceRailThickness = 0.14;
-    const fenceBarThickness = 0.085;
-    // Each entrance opening is two regular fence bays wide.
-    const gateWidth = Math.min(removedFenceBayWidth * 2, (maxX - minX) * 0.20);
     const standardGateWidth = gateWidth;
-    const gateCenterOffset = Math.min((maxX - minX) * 0.25, standardGateWidth * 3.2);
-    const leftGateCenterX = campusCenterX - gateCenterOffset;
-    const rightGateCenterX = campusCenterX + gateCenterOffset;
-    const leftGateStartX = leftGateCenterX - gateWidth / 2;
-    const leftGateEndX = leftGateCenterX + gateWidth / 2;
-    const rightGateStartX = rightGateCenterX - gateWidth / 2;
-    const rightGateEndX = rightGateCenterX + gateWidth / 2;
     const fenceRailYs = [
         fenceBaseY + fenceWallHeight + 0.06,
         fenceBaseY + fenceWallHeight + 0.34,
@@ -3322,7 +3358,6 @@ function createCampusPerimeterFence() {
 
     // Short concrete return walls guide visitors into each entrance without
     // narrowing the two-bay openings themselves.
-    const entranceReturnDepth = 4.0;
     [
         ['Left', leftGateStartX, leftGateEndX],
         ['Right', rightGateStartX, rightGateEndX]
@@ -3347,7 +3382,6 @@ function createCampusPerimeterFence() {
 
     // Rotate the short extension 90 degrees at the existing inner post.  The
     // pair at each entrance points toward that entrance's own opening.
-    const entranceRotatedExtension = 3.0;
     [
         ['Left', leftGateStartX, leftGateEndX],
         ['Right', rightGateStartX, rightGateEndX]
@@ -3729,6 +3763,807 @@ function createCampusPerimeterFence() {
     scene.add(fenceGroup);
     addUniqueRegistryItem(objects, fenceGroup);
     window.campusPerimeterFence = fenceGroup;
+}
+
+function createGateSecurityCheckpoints() {
+    if (scene.getObjectByName('gateSecurityCheckpoints')) return;
+
+    const layout = getCampusFenceLayout();
+    if (!layout) return;
+
+    const {
+        minZ,
+        gateWidth,
+        fencePostWidth,
+        entranceReturnDepth,
+        entranceRotatedExtension,
+        leftGateStartX,
+        rightGateEndX
+    } = layout;
+
+    const checkpointGroup = new THREE.Group();
+    checkpointGroup.name = 'gateSecurityCheckpoints';
+    checkpointGroup.userData.isComponent = true;
+    checkpointGroup.userData.type = 'gateSecurityCheckpoints';
+
+    const detectorFrameMat = new THREE.MeshStandardMaterial({
+        color: 0x33414b,
+        roughness: 0.35,
+        metalness: 0.72
+    });
+    const detectorTrimMat = new THREE.MeshStandardMaterial({
+        color: 0x9ca9ae,
+        roughness: 0.42,
+        metalness: 0.62
+    });
+    const scannerBodyMat = new THREE.MeshStandardMaterial({
+        color: 0x46535a,
+        roughness: 0.45,
+        metalness: 0.48
+    });
+    const scannerBeltMat = new THREE.MeshStandardMaterial({
+        color: 0x20282d,
+        roughness: 0.52,
+        metalness: 0.40
+    });
+    const securityFloorMat = new THREE.MeshStandardMaterial({
+        color: 0x55646b,
+        roughness: 0.90,
+        metalness: 0.08
+    });
+    const securityAccentMat = new THREE.MeshStandardMaterial({
+        color: 0x267f9a,
+        emissive: 0x0b3442,
+        emissiveIntensity: 0.68,
+        roughness: 0.28,
+        metalness: 0.44
+    });
+    const securityScreenMat = new THREE.MeshStandardMaterial({
+        color: 0x0d1720,
+        emissive: 0x092b3a,
+        emissiveIntensity: 0.48,
+        roughness: 0.28,
+        metalness: 0.34
+    });
+    const securityLightMat = new THREE.MeshStandardMaterial({
+        color: 0x62e2ef,
+        emissive: 0x1ab7d0,
+        emissiveIntensity: 1.15,
+        roughness: 0.18,
+        metalness: 0.32
+    });
+
+    const addBox = (parent, name, width, height, depth, x, y, z, material) => {
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
+        mesh.name = name;
+        mesh.position.set(x, y, z);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.userData.isSecurityCheckpointPart = true;
+        parent.add(mesh);
+        return mesh;
+    };
+
+    const addCylinder = (parent, name, radius, height, x, y, z, material, rotationZ = 0) => {
+        const mesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(radius, radius, height, 12),
+            material
+        );
+        mesh.name = name;
+        mesh.position.set(x, y, z);
+        mesh.rotation.z = rotationZ;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.userData.isSecurityCheckpointPart = true;
+        parent.add(mesh);
+        return mesh;
+    };
+
+    const addWalkThroughDetector = (parent, entranceName) => {
+        const detectorWidth = Math.min(2.15, Math.max(1.80, gateWidth * 0.20));
+        const detectorHeight = 3.02;
+        const detectorDepth = 0.34;
+        const detectorPostWidth = 0.22;
+        const detectorSideX = detectorWidth / 2 - detectorPostWidth / 2;
+        const detectorFrontZ = -detectorDepth / 2 - 0.025;
+        const detectorOpeningWidth = detectorWidth - detectorPostWidth * 2;
+        const detectorAssembly = new THREE.Group();
+        detectorAssembly.name = 'campusEntrance' + entranceName + 'SecurityDetectorAssembly';
+        detectorAssembly.userData.isSecurityCheckpointPart = true;
+        // Leave a clear approach between the gate and the detector so the
+        // pedestrian gate can be used without the frame sitting on its posts.
+        detectorAssembly.position.z = 1.60;
+        parent.add(detectorAssembly);
+        parent = detectorAssembly;
+
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityDetectorFloor',
+            detectorOpeningWidth,
+            0.035,
+            0.82,
+            0,
+            0.035,
+            0.02,
+            securityFloorMat
+        );
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityDetectorLeftPost',
+            detectorPostWidth,
+            detectorHeight,
+            detectorDepth,
+            -detectorSideX,
+            detectorHeight / 2,
+            0,
+            detectorFrameMat
+        );
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityDetectorRightPost',
+            detectorPostWidth,
+            detectorHeight,
+            detectorDepth,
+            detectorSideX,
+            detectorHeight / 2,
+            0,
+            detectorFrameMat
+        );
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityDetectorTopBeam',
+            detectorWidth,
+            0.24,
+            detectorDepth,
+            0,
+            detectorHeight - 0.12,
+            0,
+            detectorFrameMat
+        );
+
+        [-detectorSideX, detectorSideX].forEach((x, sideIndex) => {
+            addBox(
+                parent,
+                'campusEntrance' + entranceName + 'SecurityDetectorFoot' + (sideIndex + 1),
+                detectorPostWidth + 0.12,
+                0.08,
+                detectorDepth + 0.12,
+                x,
+                0.04,
+                0,
+                detectorTrimMat
+            );
+            addBox(
+                parent,
+                'campusEntrance' + entranceName + 'SecurityDetectorLight' + (sideIndex + 1),
+                0.055,
+                0.72,
+                0.045,
+                x,
+                1.42,
+                detectorFrontZ,
+                securityLightMat
+            );
+        });
+
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityDetectorFrontDisplay',
+            0.72,
+            0.17,
+            0.045,
+            0,
+            detectorHeight - 0.37,
+            detectorFrontZ,
+            securityScreenMat
+        );
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityDetectorFrontDisplayLight',
+            0.38,
+            0.025,
+            0.018,
+            0,
+            detectorHeight - 0.37,
+            detectorFrontZ - 0.032,
+            securityLightMat
+        );
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityDetectorTopSign',
+            detectorWidth * 0.68,
+            0.10,
+            0.055,
+            0,
+            detectorHeight + 0.08,
+            0,
+            securityAccentMat
+        );
+    };
+
+    const addXrayScanner = (parent, entranceName, scannerX) => {
+        const conveyorWidth = 1.26;
+        const conveyorDepth = 3.15;
+        const conveyorZ = 1.95;
+        const conveyorTopY = 0.94;
+        const conveyorRailWidth = 0.10;
+        const conveyorSideX = conveyorWidth / 2 - conveyorRailWidth / 2;
+
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityXrayConveyorBelt',
+            conveyorWidth - 0.10,
+            0.07,
+            conveyorDepth,
+            scannerX,
+            conveyorTopY,
+            conveyorZ,
+            scannerBeltMat
+        );
+        [-conveyorSideX, conveyorSideX].forEach((x, sideIndex) => {
+            addBox(
+                parent,
+                'campusEntrance' + entranceName + 'SecurityXrayConveyorRail' + (sideIndex + 1),
+                conveyorRailWidth,
+                0.20,
+                conveyorDepth,
+                scannerX + x,
+                conveyorTopY + 0.09,
+                conveyorZ,
+                scannerBodyMat
+            );
+        });
+
+        const rollerCount = 9;
+        for (let index = 0; index < rollerCount; index += 1) {
+            const rollerZ = conveyorZ - conveyorDepth / 2 + 0.20
+                + index * ((conveyorDepth - 0.40) / (rollerCount - 1));
+            addCylinder(
+                parent,
+                'campusEntrance' + entranceName + 'SecurityXrayRoller' + (index + 1),
+                0.045,
+                conveyorWidth - 0.18,
+                scannerX,
+                conveyorTopY + 0.06,
+                rollerZ,
+                detectorTrimMat,
+                Math.PI / 2
+            );
+        }
+
+        [
+            [-conveyorSideX, -conveyorDepth / 2 + 0.22],
+            [conveyorSideX, -conveyorDepth / 2 + 0.22],
+            [-conveyorSideX, conveyorDepth / 2 - 0.22],
+            [conveyorSideX, conveyorDepth / 2 - 0.22]
+        ].forEach(([x, z], legIndex) => {
+            addBox(
+                parent,
+                'campusEntrance' + entranceName + 'SecurityXrayLeg' + (legIndex + 1),
+                0.10,
+                conveyorTopY - 0.08,
+                0.10,
+                scannerX + x,
+                (conveyorTopY - 0.08) / 2,
+                conveyorZ + z,
+                scannerBodyMat
+            );
+        });
+
+        const tunnelWidth = 1.56;
+        const tunnelDepth = 1.16;
+        const tunnelHeight = 1.62;
+        const tunnelBaseY = conveyorTopY + 0.05;
+        const tunnelCenterY = tunnelBaseY + tunnelHeight / 2;
+        const tunnelSideX = tunnelWidth / 2 - 0.10;
+        const tunnelZ = conveyorZ;
+
+        [-tunnelSideX, tunnelSideX].forEach((x, sideIndex) => {
+            addBox(
+                parent,
+                'campusEntrance' + entranceName + 'SecurityXrayTunnelSide' + (sideIndex + 1),
+                0.20,
+                tunnelHeight,
+                tunnelDepth,
+                scannerX + x,
+                tunnelCenterY,
+                tunnelZ,
+                scannerBodyMat
+            );
+        });
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityXrayTunnelTop',
+            tunnelWidth,
+            0.22,
+            tunnelDepth,
+            scannerX,
+            tunnelBaseY + tunnelHeight - 0.11,
+            tunnelZ,
+            scannerBodyMat
+        );
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityXrayTunnelBack',
+            tunnelWidth - 0.20,
+            tunnelHeight - 0.20,
+            0.08,
+            scannerX,
+            tunnelCenterY,
+            tunnelZ + tunnelDepth / 2 - 0.04,
+            securityScreenMat
+        );
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityXrayControlPanel',
+            0.70,
+            0.24,
+            0.05,
+            scannerX,
+            tunnelBaseY + tunnelHeight - 0.36,
+            tunnelZ - tunnelDepth / 2 - 0.035,
+            securityScreenMat
+        );
+        [-0.22, 0, 0.22].forEach((x, lightIndex) => {
+            addBox(
+                parent,
+                'campusEntrance' + entranceName + 'SecurityXrayStatusLight' + (lightIndex + 1),
+                0.10,
+                0.055,
+                0.025,
+                scannerX + x,
+                tunnelBaseY + tunnelHeight - 0.36,
+                tunnelZ - tunnelDepth / 2 - 0.075,
+                lightIndex === 0 ? securityLightMat : detectorTrimMat
+            );
+        });
+    };
+
+    const addMonitoringStation = (parent, entranceName, monitorX, monitorZ) => {
+        const deskWidth = 1.48;
+        const deskDepth = 0.88;
+        // This local Z is calculated from the side-wall position for each
+        // entrance, so the desk sits against the matching wall.
+        const deskZ = monitorZ;
+        const deskTopY = 1.08;
+        const deskLegHeight = 1.02;
+
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityMonitorDeskTop',
+            deskWidth,
+            0.12,
+            deskDepth,
+            monitorX,
+            deskTopY,
+            deskZ,
+            scannerBodyMat
+        );
+        [-deskWidth / 2 + 0.12, deskWidth / 2 - 0.12].forEach((x, sideIndex) => {
+            [-deskDepth / 2 + 0.12, deskDepth / 2 - 0.12].forEach((z, depthIndex) => {
+                addBox(
+                    parent,
+                    'campusEntrance' + entranceName + 'SecurityMonitorDeskLeg'
+                        + (sideIndex * 2 + depthIndex + 1),
+                    0.09,
+                    deskLegHeight,
+                    0.09,
+                    monitorX + x,
+                    deskLegHeight / 2,
+                    deskZ + z,
+                    scannerBodyMat
+                );
+            });
+        });
+
+        const screenZ = deskZ - deskDepth / 2 + 0.10;
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityMonitorScreenFrame',
+            1.10,
+            0.68,
+            0.10,
+            monitorX,
+            1.68,
+            screenZ,
+            scannerBodyMat
+        );
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityMonitorScreen',
+            0.90,
+            0.49,
+            0.025,
+            monitorX,
+            1.69,
+            screenZ + 0.063,
+            securityScreenMat
+        );
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityMonitorScreenLine',
+            0.52,
+            0.028,
+            0.012,
+            monitorX,
+            1.79,
+            screenZ + 0.082,
+            securityLightMat
+        );
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityMonitorStand',
+            0.12,
+            0.30,
+            0.12,
+            monitorX,
+            1.29,
+            screenZ,
+            scannerBodyMat
+        );
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityMonitorKeyboard',
+            0.54,
+            0.035,
+            0.22,
+            monitorX,
+            deskTopY + 0.085,
+            deskZ - 0.20,
+            securityScreenMat
+        );
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityMonitorStatusPanel',
+            0.34,
+            0.08,
+            0.04,
+            monitorX + 0.48,
+            deskTopY + 0.095,
+            deskZ - 0.18,
+            securityAccentMat
+        );
+
+        // Large wall-mounted CCTV display above the operator's monitor.
+        const cctvDisplayWidth = 2.08;
+        const cctvDisplayHeight = 1.26;
+        const cctvDisplayCenterY = 3.10;
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityCctvDisplayFrame',
+            cctvDisplayWidth,
+            cctvDisplayHeight,
+            0.12,
+            monitorX,
+            cctvDisplayCenterY,
+            screenZ,
+            scannerBodyMat
+        );
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityCctvDisplayScreen',
+            cctvDisplayWidth - 0.22,
+            cctvDisplayHeight - 0.24,
+            0.025,
+            monitorX,
+            cctvDisplayCenterY,
+            screenZ + 0.073,
+            securityScreenMat
+        );
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityCctvDisplayStatusLine',
+            0.82,
+            0.035,
+            0.012,
+            monitorX,
+            cctvDisplayCenterY + 0.20,
+            screenZ + 0.091,
+            securityLightMat
+        );
+        [-0.56, 0.56].forEach((x, mountIndex) => {
+            addBox(
+                parent,
+                'campusEntrance' + entranceName + 'SecurityCctvDisplayMount'
+                    + (mountIndex + 1),
+                0.12,
+                0.18,
+                0.16,
+                monitorX + x,
+                cctvDisplayCenterY - cctvDisplayHeight / 2 - 0.08,
+                screenZ - 0.055,
+                scannerBodyMat
+            );
+        });
+
+        const chairSeatY = 0.72;
+        const chairZ = deskZ + deskDepth / 2 + 0.62;
+        const chairWidth = 0.82;
+        const chairDepth = 0.78;
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityMonitorChairSeat',
+            chairWidth,
+            0.12,
+            chairDepth,
+            monitorX,
+            chairSeatY,
+            chairZ,
+            scannerBodyMat
+        );
+        [-chairWidth / 2 + 0.12, chairWidth / 2 - 0.12].forEach((x, sideIndex) => {
+            [-chairDepth / 2 + 0.12, chairDepth / 2 - 0.12].forEach((z, depthIndex) => {
+                addBox(
+                    parent,
+                    'campusEntrance' + entranceName + 'SecurityMonitorChairLeg'
+                        + (sideIndex * 2 + depthIndex + 1),
+                    0.08,
+                    chairSeatY - 0.06,
+                    0.08,
+                    monitorX + x,
+                    (chairSeatY - 0.06) / 2,
+                    chairZ + z,
+                    scannerBodyMat
+                );
+            });
+        });
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityMonitorChairBack',
+            chairWidth,
+            0.72,
+            0.10,
+            monitorX,
+            1.10,
+            chairZ + chairDepth / 2 - 0.05,
+            scannerBodyMat
+        );
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityMonitorChairBackAccent',
+            chairWidth - 0.18,
+            0.08,
+            0.025,
+            monitorX,
+            1.22,
+            chairZ + chairDepth / 2 - 0.11,
+            securityAccentMat
+        );
+    };
+
+    const addPedestrianGuideRails = (
+        parent,
+        entranceName,
+        checkpointBaseX,
+        checkpointBaseZ,
+        guideRailPostX,
+        gateZ,
+        direction
+    ) => {
+        const detectorWidth = Math.min(2.15, Math.max(1.80, gateWidth * 0.20));
+        const railHeight = 0.98;
+        // Convert the shared post into mirrored local coordinates so the
+        // opposite checkpoint uses the same layout as the circled template.
+        const postLocalX = direction * (checkpointBaseZ - gateZ);
+        const postLocalZ = direction * (guideRailPostX - checkpointBaseX);
+        const detectorSideX = -direction * (detectorWidth / 2 + 0.06);
+        const detectorApproachZ = 1.60 + 0.25;
+        // Keep the rail on the inner face of the shared post.  The small
+        // offset makes the rail touch the post without being swallowed by the
+        // concrete/gate plane.
+        const railLineZ = postLocalZ - 0.23;
+
+        // Long arm follows the detector opening, from the detector-side end
+        // to the shared concrete post between the single and double gates.
+        const railStartX = Math.min(postLocalX, detectorSideX);
+        const railEndX = Math.max(postLocalX, detectorSideX);
+        const railLength = railEndX - railStartX;
+        const railCenterX = (railStartX + railEndX) / 2;
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityGuideRailTop1',
+            railLength,
+            0.10,
+            0.10,
+            railCenterX,
+            railHeight,
+            railLineZ,
+            scannerBodyMat
+        );
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityGuideRailHandrail1',
+            railLength,
+            0.055,
+            0.055,
+            railCenterX,
+            0.56,
+            railLineZ,
+            securityAccentMat
+        );
+
+        // Keep matching end supports and one center vertical on the L's long
+        // arm, avoiding the duplicate pair shown in the reference.
+        const railSupportPositions = [
+            railStartX,
+            railCenterX,
+            railEndX
+        ];
+        railSupportPositions.forEach((x, postIndex) => {
+            addBox(
+                parent,
+                'campusEntrance' + entranceName + 'SecurityGuideRailPost1_'
+                    + (postIndex + 1),
+                0.11,
+                railHeight,
+                0.11,
+                x,
+                railHeight / 2,
+                railLineZ,
+                scannerBodyMat
+            );
+            addBox(
+                parent,
+                'campusEntrance' + entranceName + 'SecurityGuideRailFoot1_'
+                    + (postIndex + 1),
+                0.22,
+                0.06,
+                0.22,
+                x,
+                0.03,
+                railLineZ,
+                detectorTrimMat
+            );
+        });
+
+        // The short arm turns toward the detector at the far end of the long
+        // arm, creating the broad L shown in the reference.
+        const branchStartZ = railLineZ;
+        const branchEndZ = detectorApproachZ;
+        const branchLength = Math.abs(branchEndZ - branchStartZ);
+        const branchCenterZ = (branchStartZ + branchEndZ) / 2;
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityGuideRailTurnTop',
+            0.10,
+            0.10,
+            branchLength,
+            detectorSideX,
+            railHeight,
+            branchCenterZ,
+            scannerBodyMat
+        );
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityGuideRailTurnHandrail',
+            0.055,
+            0.055,
+            branchLength,
+            detectorSideX,
+            0.56,
+            branchCenterZ,
+            securityAccentMat
+        );
+        [branchCenterZ, branchEndZ].forEach((z, postIndex) => {
+            addBox(
+                parent,
+                'campusEntrance' + entranceName + 'SecurityGuideRailTurnPost'
+                    + (postIndex + 1),
+                0.11,
+                railHeight,
+                0.11,
+                detectorSideX,
+                railHeight / 2,
+                z,
+                scannerBodyMat
+            );
+            addBox(
+                parent,
+                'campusEntrance' + entranceName + 'SecurityGuideRailTurnFoot'
+                    + (postIndex + 1),
+                0.22,
+                0.06,
+                0.22,
+                detectorSideX,
+                0.03,
+                z,
+                detectorTrimMat
+            );
+        });
+    };
+
+    const smallGateWidth = Math.min(3.2, gateWidth * 0.30);
+    [
+        { name: 'Left', outerX: leftGateStartX, direction: 1 },
+        { name: 'Right', outerX: rightGateEndX, direction: -1 }
+    ].forEach(({ name, outerX, direction }) => {
+        // Use the opposite checkpoint orientation so the circled entrance
+        // follows the layout of the other gate.
+        const layoutDirection = -direction;
+        const triangleInnerX = outerX + direction * entranceRotatedExtension;
+        const smallGateStartX = triangleInnerX;
+        const smallGateEndX = smallGateStartX + direction * smallGateWidth;
+        // Center the checkpoint on the usable opening between the two
+        // concrete posts, rather than on the outer gate-edge coordinates.
+        const singleGateOpeningMinX = Math.min(smallGateStartX, smallGateEndX)
+            + fencePostWidth / 2 + 0.06;
+        const singleGateOpeningMaxX = Math.max(smallGateStartX, smallGateEndX)
+            - fencePostWidth / 2 - 0.06;
+        const singleGateCenterX = (singleGateOpeningMinX + singleGateOpeningMaxX) / 2;
+        const gateZ = minZ + entranceReturnDepth;
+        const checkpointBaseX = singleGateCenterX + direction * 0.12 - direction * 2.20;
+        const checkpointBaseZ = gateZ + 3.30;
+        // Place the computer on the inside face of the return wall, leaving
+        // a small service clearance so its desk does not intersect the wall.
+        // Align the station with the broad return-wall panel, leaving only a
+        // small service gap from the wall face.
+        // Keep the station on the nearby side wall beside the checkpoint,
+        // rather than sending it across the full entrance opening.
+        // Pull the computer slightly out from the wall line so it remains
+        // visible from the side instead of being occluded by the fence panel.
+        // The reference marks the open side beyond the return wall.  Put the
+        // station on that side, not on the checkpoint/floor-pad side.
+        // Reduce the wall offset so the desk sits nearly flush with the wall
+        // while retaining a tiny non-intersecting clearance.
+        const wallComputerX = outerX - direction * 0.62;
+        // Place the desk against the long return-wall panel, not at the
+        // horizontal wall turn beside the detector.
+        const wallComputerZ = minZ + entranceReturnDepth * 0.55;
+        // Convert the desired world-space wall position into the rotated
+        // checkpoint's local coordinates.  These signs are the true inverse
+        // of Three.js' Y rotation; the old signs mirrored the station away
+        // from the marked wall.
+        const monitorLocalX = layoutDirection * (checkpointBaseZ - wallComputerZ);
+        const monitorLocalZ = layoutDirection * (wallComputerX - checkpointBaseX);
+        const checkpoint = new THREE.Group();
+        checkpoint.name = 'gateSecurityCheckpoint' + name;
+        checkpoint.userData.isComponent = true;
+        checkpoint.userData.isSecurityCheckpoint = true;
+        // Small perspective correction: in the oblique editor camera the
+        // centered frame reads slightly toward the triangle-side post.
+        checkpoint.position.set(
+            checkpointBaseX,
+            0,
+            checkpointBaseZ
+        );
+        // Rotate the complete checkpoint as one unit so the detector,
+        // scanner, monitor, and floor pad keep their relative arrangement.
+        checkpoint.rotation.y = layoutDirection * Math.PI / 2;
+
+        addBox(
+            checkpoint,
+            'campusEntrance' + name + 'SecurityCheckpointFloorPad',
+            4.60,
+            0.035,
+            4.90,
+            -layoutDirection * 0.90,
+            0.018,
+            2.25,
+            securityFloorMat
+        );
+        addWalkThroughDetector(checkpoint, name);
+        addPedestrianGuideRails(
+            checkpoint,
+            name,
+            checkpointBaseX,
+            checkpointBaseZ,
+            smallGateEndX,
+            gateZ,
+            layoutDirection
+        );
+        // Keep all checkpoint equipment on the triangle/single-gate side.
+        // The opposite side remains a completely clear vehicle path for the
+        // double gate.
+        // Keep the conveyor on the opposite side of the walkthrough frame,
+        // matching the reference gate's screening flow.
+        addXrayScanner(checkpoint, name, -direction * 1.95);
+        addMonitoringStation(checkpoint, name, monitorLocalX, monitorLocalZ);
+        checkpointGroup.add(checkpoint);
+    });
+
+    scene.add(checkpointGroup);
+    addUniqueRegistryItem(objects, checkpointGroup);
+    window.gateSecurityCheckpoints = checkpointGroup;
 }
 
 function liftBuildingStackToGround() {
@@ -5131,7 +5966,8 @@ function getBuildingVisibilityConfigs() {
         { id: 'chk-building-back-left', name: 'buildingUnitTopLeft' },
         { id: 'chk-building-back-right', name: 'buildingUnitTopRight' },
         { id: 'chk-covered-court', name: 'coveredCourt' },
-        { id: 'chk-campus-fence', name: 'campusPerimeterFence' }
+        { id: 'chk-campus-fence', name: 'campusPerimeterFence' },
+        { id: 'chk-security-checkpoints', name: 'gateSecurityCheckpoints' }
     ];
 }
 
