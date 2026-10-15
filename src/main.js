@@ -3249,24 +3249,19 @@ function createCampusPerimeterFence() {
     fenceGroup.userData.type = 'campusPerimeterFence';
 
     const fenceMat = new THREE.MeshStandardMaterial({
-        color: 0x252a2a,
-        roughness: 0.56,
-        metalness: 0.58
+        color: 0x9dc359,
+        roughness: 0.65,
+        metalness: 0.15
     });
     const fenceWallMat = new THREE.MeshStandardMaterial({
-        color: 0xa7a8a3,
+        color: 0xeedcb0,
         roughness: 0.92,
         metalness: 0.02
     });
     const fencePostMat = new THREE.MeshStandardMaterial({
-        color: 0xd7d1bd,
+        color: 0xf5df9d,
         roughness: 0.88,
         metalness: 0.03
-    });
-    const fencePostAccentMat = new THREE.MeshStandardMaterial({
-        color: 0xb7b3a6,
-        roughness: 0.90,
-        metalness: 0.02
     });
 
     // Only the concrete base wall is tripled; keep the black steel grille at
@@ -3487,18 +3482,6 @@ function createCampusPerimeterFence() {
             z,
             fencePostMat
         );
-        [0.28, 0.52, 0.76].forEach((bandOffset, bandIndex) => {
-            addFenceBox(
-                `${name}Band${bandIndex + 1}`,
-                postWidth + 0.05,
-                0.06,
-                postWidth + 0.05,
-                x,
-                fenceBaseY + bandOffset,
-                z,
-                fencePostAccentMat
-            );
-        });
     };
 
     // Finish the inward end of every entrance return wall with a matching
@@ -3847,9 +3830,9 @@ function createGateSecurityCheckpoints() {
         metalness: 0.32
     });
     const securityCanopyMat = new THREE.MeshStandardMaterial({
-        color: 0x4a5a5b,
-        roughness: 0.68,
-        metalness: 0.34
+        color: 0x78a99d,
+        roughness: 0.70,
+        metalness: 0.18
     });
     const securityCanopyTrimMat = new THREE.MeshStandardMaterial({
         color: 0x273236,
@@ -3857,11 +3840,10 @@ function createGateSecurityCheckpoints() {
         metalness: 0.56
     });
     const securityCanopyWallMat = new THREE.MeshStandardMaterial({
-        color: 0x6a6963,
+        color: 0xeedcb0,
         roughness: 0.90,
         metalness: 0.02
     });
-
     const addBox = (parent, name, width, height, depth, x, y, z, material) => {
         const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
         mesh.name = name;
@@ -4884,20 +4866,9 @@ function createGateSecurityCheckpoints() {
             checkpointBaseZ
         );
         // Rotate the complete checkpoint as one unit so the detector,
-        // scanner, monitor, and floor pad keep their relative arrangement.
+        // scanner, and monitor keep their relative arrangement.
         checkpoint.rotation.y = layoutDirection * Math.PI / 2;
 
-        addBox(
-            checkpoint,
-            'campusEntrance' + name + 'SecurityCheckpointFloorPad',
-            4.60,
-            0.035,
-            4.90,
-            -layoutDirection * 0.90,
-            0.018,
-            2.25,
-            securityFloorMat
-        );
         addWalkThroughDetector(checkpoint, name);
         addPedestrianGuideRails(
             checkpoint,
