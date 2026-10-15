@@ -3846,6 +3846,21 @@ function createGateSecurityCheckpoints() {
         roughness: 0.18,
         metalness: 0.32
     });
+    const securityCanopyMat = new THREE.MeshStandardMaterial({
+        color: 0x4a5a5b,
+        roughness: 0.68,
+        metalness: 0.34
+    });
+    const securityCanopyTrimMat = new THREE.MeshStandardMaterial({
+        color: 0x273236,
+        roughness: 0.52,
+        metalness: 0.56
+    });
+    const securityCanopyWallMat = new THREE.MeshStandardMaterial({
+        color: 0x6a6963,
+        roughness: 0.90,
+        metalness: 0.02
+    });
 
     const addBox = (parent, name, width, height, depth, x, y, z, material) => {
         const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
@@ -4486,6 +4501,326 @@ function createGateSecurityCheckpoints() {
         });
     };
 
+    const addSecurityCheckpointCanopy = (
+        parent,
+        entranceName,
+        monitorX,
+        monitorZ,
+        scannerX,
+        floorPadCenterX,
+        gateLocalX,
+        gateLocalZMin,
+        gateLocalZMax
+    ) => {
+        // Cover the broad security footprint, including the detector, x-ray
+        // conveyor, operator desk, floor pad, and single gate.
+        const floorPadWidth = 4.60;
+        const floorPadMinZ = 2.25 - 4.90 / 2;
+        const floorPadMaxZ = 2.25 + 4.90 / 2;
+        const cctvDisplayHalfWidth = 2.08 / 2;
+        const deskHalfWidth = 1.48 / 2;
+        const scannerHalfWidth = 1.56 / 2;
+        const scannerHalfDepth = 3.15 / 2;
+        const scannerZ = 1.95;
+        const securityCanopySideOverhang = 0.35;
+        const securityCanopyDepthOverhang = 0.28;
+        const canopyBaseMinX = Math.min(
+            floorPadCenterX - floorPadWidth / 2,
+            scannerX - scannerHalfWidth,
+            monitorX - Math.max(deskHalfWidth, cctvDisplayHalfWidth),
+            gateLocalX - 0.25
+        ) - securityCanopySideOverhang;
+        const canopyBaseMaxX = Math.max(
+            floorPadCenterX + floorPadWidth / 2,
+            scannerX + scannerHalfWidth,
+            monitorX + Math.max(deskHalfWidth, cctvDisplayHalfWidth),
+            gateLocalX + 0.25
+        ) + securityCanopySideOverhang;
+        // Pull the complete roof assembly slightly toward the gate/fence line
+        // so its edge sits closer to the boundary in the oblique view while
+        // the broad footprint still covers the detector and monitoring desk.
+        const canopyBaseCenterX = (canopyBaseMinX + canopyBaseMaxX) / 2;
+        const canopyFenceDirection = Math.sign(gateLocalX - canopyBaseCenterX);
+        const canopyFenceShift = canopyFenceDirection * 0.55;
+        const shiftedCanopyMinX = canopyBaseMinX + canopyFenceShift;
+        const shiftedCanopyMaxX = canopyBaseMaxX + canopyFenceShift;
+        // Stop the roof just inside the single-gate plane.  This removes the
+        // outer-side roof section while keeping the canopy over the gate and
+        // the checkpoint area inside the campus.
+        const canopyOuterEdgeX = gateLocalX - canopyFenceDirection * 0.08;
+        const canopyMinX = canopyFenceDirection < 0
+            ? Math.max(shiftedCanopyMinX, canopyOuterEdgeX)
+            : shiftedCanopyMinX;
+        const canopyMaxX = canopyFenceDirection > 0
+            ? Math.min(shiftedCanopyMaxX, canopyOuterEdgeX)
+            : shiftedCanopyMaxX;
+        // Restore the broad canopy footprint over the complete security pad,
+        // while still including the single-gate limits.
+        const canopyMinZ = Math.min(
+            floorPadMinZ,
+            scannerZ - scannerHalfDepth,
+            monitorZ - 0.52,
+            gateLocalZMin
+        ) - securityCanopyDepthOverhang;
+        const canopyMaxZ = Math.max(
+            floorPadMaxZ,
+            scannerZ + scannerHalfDepth,
+            monitorZ + 1.50,
+            gateLocalZMax
+        ) + securityCanopyDepthOverhang;
+        const canopyWidth = canopyMaxX - canopyMinX;
+        const canopyDepth = canopyMaxZ - canopyMinZ;
+        const canopyCenterX = (canopyMinX + canopyMaxX) / 2;
+        const canopyCenterZ = (canopyMinZ + canopyMaxZ) / 2;
+        // Keep the canopy clearly above the concrete fence-post caps.
+        const canopyBottomY = 4.92;
+        const canopyThickness = 0.18;
+
+        // Keep the original monitor-side roof panel.  The missing area is an
+        // L-shaped extension beside it, not a larger rectangular roof.
+        const monitorCanopyWingMinZ = monitorZ - 0.62;
+        const monitorCanopyWingMaxZ = monitorZ + 1.55;
+        const monitorCanopyWingCenterZ = (
+            monitorCanopyWingMinZ + monitorCanopyWingMaxZ
+        ) / 2;
+        const monitorCanopyWingOuterX = monitorX
+            + canopyFenceDirection * (Math.max(deskHalfWidth, cctvDisplayHalfWidth) + 0.20);
+
+        const outerWallLocalX = gateLocalX
+            + canopyFenceDirection * (entranceReturnDepth - 0.10);
+        // The green-marked shade runs all the way to the return wall.  Keep
+        // the roof just inside that wall so the outer edge never projects
+        // beyond the concrete boundary.
+        const gapFillOuterX = outerWallLocalX;
+        const gapFillEndDirection = Math.sign(
+            monitorCanopyWingCenterZ - canopyCenterZ
+        ) || 1;
+        const gapFillDepthZ = 0.28;
+        const gapFillEndZ = gapFillEndDirection > 0
+            ? monitorCanopyWingMaxZ + gapFillDepthZ
+            : monitorCanopyWingMinZ - gapFillDepthZ;
+        const gapFillEndStartZ = gapFillEndDirection > 0
+            ? monitorCanopyWingMaxZ
+            : monitorCanopyWingMinZ;
+        const canopyGateEdgeX = canopyFenceDirection < 0
+            ? Math.min(canopyMinX, canopyMaxX)
+            : Math.max(canopyMinX, canopyMaxX);
+        // Keep the main canopy in place and add only the shaded band from
+        // its gate-side edge to the return wall.  The wall is the exact
+        // outer limit; nothing is added beyond it.
+        const canopyRoofRectangles = [
+            {
+                minX: Math.min(canopyMinX, canopyMaxX),
+                maxX: Math.max(canopyMinX, canopyMaxX),
+                minZ: Math.min(canopyMinZ, canopyMaxZ),
+                maxZ: Math.max(canopyMinZ, canopyMaxZ)
+            },
+            {
+                minX: Math.min(canopyGateEdgeX, monitorCanopyWingOuterX),
+                maxX: Math.max(canopyGateEdgeX, monitorCanopyWingOuterX),
+                minZ: monitorCanopyWingMinZ,
+                maxZ: monitorCanopyWingMaxZ
+            },
+            {
+                minX: Math.min(monitorCanopyWingOuterX, gapFillOuterX),
+                maxX: Math.max(monitorCanopyWingOuterX, gapFillOuterX),
+                minZ: monitorCanopyWingMinZ,
+                maxZ: monitorCanopyWingMaxZ
+            },
+            {
+                minX: Math.min(canopyGateEdgeX, gapFillOuterX),
+                maxX: Math.max(canopyGateEdgeX, gapFillOuterX),
+                minZ: Math.min(gapFillEndStartZ, gapFillEndZ),
+                maxZ: Math.max(gapFillEndStartZ, gapFillEndZ)
+            }
+        ].filter((rectangle) => (
+            rectangle.maxX - rectangle.minX > 0.001
+            && rectangle.maxZ - rectangle.minZ > 0.001
+        ));
+
+        const roofXBreaks = Array.from(new Set(
+            canopyRoofRectangles.flatMap((rectangle) => [rectangle.minX, rectangle.maxX])
+        )).sort((a, b) => a - b);
+        const roofZBreaks = Array.from(new Set(
+            canopyRoofRectangles.flatMap((rectangle) => [rectangle.minZ, rectangle.maxZ])
+        )).sort((a, b) => a - b);
+        const roofCellKeys = new Set();
+        for (let xIndex = 0; xIndex < roofXBreaks.length - 1; xIndex += 1) {
+            for (let zIndex = 0; zIndex < roofZBreaks.length - 1; zIndex += 1) {
+                const centerX = (roofXBreaks[xIndex] + roofXBreaks[xIndex + 1]) / 2;
+                const centerZ = (roofZBreaks[zIndex] + roofZBreaks[zIndex + 1]) / 2;
+                if (canopyRoofRectangles.some((rectangle) => (
+                    centerX > rectangle.minX
+                    && centerX < rectangle.maxX
+                    && centerZ > rectangle.minZ
+                    && centerZ < rectangle.maxZ
+                ))) {
+                    roofCellKeys.add(`${xIndex}:${zIndex}`);
+                }
+            }
+        }
+        const isRoofCellFilled = (xIndex, zIndex) => (
+            roofCellKeys.has(`${xIndex}:${zIndex}`)
+        );
+        const roofBoundaryEdges = [];
+        const addRoofBoundaryEdge = (start, end) => {
+            roofBoundaryEdges.push({ start, end });
+        };
+        for (let xIndex = 0; xIndex < roofXBreaks.length - 1; xIndex += 1) {
+            for (let zIndex = 0; zIndex < roofZBreaks.length - 1; zIndex += 1) {
+                if (!isRoofCellFilled(xIndex, zIndex)) continue;
+                const x0 = roofXBreaks[xIndex];
+                const x1 = roofXBreaks[xIndex + 1];
+                const z0 = roofZBreaks[zIndex];
+                const z1 = roofZBreaks[zIndex + 1];
+                if (!isRoofCellFilled(xIndex, zIndex - 1)) {
+                    addRoofBoundaryEdge([x0, z0], [x1, z0]);
+                }
+                if (!isRoofCellFilled(xIndex + 1, zIndex)) {
+                    addRoofBoundaryEdge([x1, z0], [x1, z1]);
+                }
+                if (!isRoofCellFilled(xIndex, zIndex + 1)) {
+                    addRoofBoundaryEdge([x1, z1], [x0, z1]);
+                }
+                if (!isRoofCellFilled(xIndex - 1, zIndex)) {
+                    addRoofBoundaryEdge([x0, z1], [x0, z0]);
+                }
+            }
+        }
+
+        const roofPointKey = ([x, z]) => `${x}:${z}`;
+        const roofNextEdgeByStart = new Map();
+        roofBoundaryEdges.forEach(({ start, end }) => {
+            roofNextEdgeByStart.set(roofPointKey(start), end);
+        });
+        const roofOutline = [];
+        if (roofBoundaryEdges.length > 0) {
+            const firstPoint = roofBoundaryEdges[0].start;
+            const firstPointKey = roofPointKey(firstPoint);
+            let currentPoint = firstPoint;
+            for (let edgeIndex = 0; edgeIndex <= roofBoundaryEdges.length; edgeIndex += 1) {
+                roofOutline.push(currentPoint);
+                const nextPoint = roofNextEdgeByStart.get(roofPointKey(currentPoint));
+                if (!nextPoint || roofPointKey(nextPoint) === firstPointKey) break;
+                currentPoint = nextPoint;
+            }
+        }
+
+        if (roofOutline.length >= 3) {
+            const canopyRoofShape = new THREE.Shape();
+            roofOutline.forEach(([x, z], pointIndex) => {
+                if (pointIndex === 0) {
+                    canopyRoofShape.moveTo(x, z);
+                } else {
+                    canopyRoofShape.lineTo(x, z);
+                }
+            });
+            canopyRoofShape.closePath();
+            const canopyRoofMesh = new THREE.Mesh(
+                new THREE.ExtrudeGeometry(canopyRoofShape, {
+                    depth: canopyThickness,
+                    bevelEnabled: false
+                }),
+                securityCanopyMat
+            );
+            canopyRoofMesh.name = 'campusEntrance' + entranceName + 'SecurityCanopyRoof';
+            canopyRoofMesh.rotation.x = Math.PI / 2;
+            canopyRoofMesh.position.set(0, canopyBottomY + canopyThickness, 0);
+            canopyRoofMesh.castShadow = true;
+            canopyRoofMesh.receiveShadow = true;
+            canopyRoofMesh.userData.isSecurityCheckpointPart = true;
+            parent.add(canopyRoofMesh);
+
+            // Use only the merged roof's outer boundary for the dark trim;
+            // there is no trim line across the old slab connection.
+            const roofTrimPoints = roofOutline.slice();
+            let outlineChanged = true;
+            while (outlineChanged && roofTrimPoints.length > 2) {
+                outlineChanged = false;
+                for (let pointIndex = 0; pointIndex < roofTrimPoints.length; pointIndex += 1) {
+                    const previous = roofTrimPoints[
+                        (pointIndex + roofTrimPoints.length - 1) % roofTrimPoints.length
+                    ];
+                    const current = roofTrimPoints[pointIndex];
+                    const next = roofTrimPoints[(pointIndex + 1) % roofTrimPoints.length];
+                    const sameVertical = (
+                        Math.abs(previous[0] - current[0]) < 0.0001
+                        && Math.abs(current[0] - next[0]) < 0.0001
+                    );
+                    const sameHorizontal = (
+                        Math.abs(previous[1] - current[1]) < 0.0001
+                        && Math.abs(current[1] - next[1]) < 0.0001
+                    );
+                    if (sameVertical || sameHorizontal) {
+                        roofTrimPoints.splice(pointIndex, 1);
+                        outlineChanged = true;
+                        break;
+                    }
+                }
+            }
+            roofTrimPoints.forEach((start, edgeIndex) => {
+                const end = roofTrimPoints[(edgeIndex + 1) % roofTrimPoints.length];
+                const horizontal = Math.abs(start[1] - end[1]) < 0.0001;
+                const edgeLength = horizontal
+                    ? Math.abs(end[0] - start[0])
+                    : Math.abs(end[1] - start[1]);
+                if (edgeLength < 0.05) return;
+                addBox(
+                    parent,
+                    'campusEntrance' + entranceName + 'SecurityCanopyFascia'
+                        + (edgeIndex + 1),
+                    horizontal ? edgeLength : 0.12,
+                    0.14,
+                    horizontal ? 0.12 : edgeLength,
+                    horizontal ? (start[0] + end[0]) / 2 : start[0],
+                    canopyBottomY - 0.02,
+                    horizontal ? start[1] : (start[1] + end[1]) / 2,
+                    securityCanopyTrimMat
+                );
+            });
+        }
+
+        // Replace the monitor-side corner posts with a solid booth wall.  The
+        // opposite side stays open so the single-gate approach remains clear.
+        const monitorSideZIndex = monitorZ >= canopyCenterZ ? 1 : 0;
+        const securitySideWallZ = monitorSideZIndex === 1
+            ? canopyMaxZ - 0.12
+            : canopyMinZ + 0.12;
+        const securitySideWallMinX = Math.min(canopyMinX, gapFillOuterX);
+        const securitySideWallMaxX = Math.max(canopyMaxX, gapFillOuterX);
+        addBox(
+            parent,
+            'campusEntrance' + entranceName + 'SecurityCanopySideWall',
+            securitySideWallMaxX - securitySideWallMinX,
+            canopyBottomY + 0.12,
+            0.24,
+            (securitySideWallMinX + securitySideWallMaxX) / 2,
+            (canopyBottomY + 0.12) / 2,
+            securitySideWallZ,
+            securityCanopyWallMat
+        );
+
+        // Keep the remaining two slim supports at the open edge of the
+        // canopy; the two posts on the wall side are intentionally omitted.
+        [canopyMinX + 0.18, canopyMaxX - 0.18].forEach((x, xIndex) => {
+            [canopyMinZ + 0.20, canopyMaxZ - 0.20].forEach((z, zIndex) => {
+                if (zIndex === monitorSideZIndex) return;
+                addBox(
+                    parent,
+                    'campusEntrance' + entranceName + 'SecurityCanopyPost'
+                        + (xIndex * 2 + zIndex + 1),
+                    0.18,
+                    canopyBottomY,
+                    0.18,
+                    x,
+                    canopyBottomY / 2,
+                    z,
+                    securityCanopyTrimMat
+                );
+            });
+        });
+    };
+
     const smallGateWidth = Math.min(3.2, gateWidth * 0.30);
     [
         { name: 'Left', outerX: leftGateStartX, direction: 1 },
@@ -4507,6 +4842,14 @@ function createGateSecurityCheckpoints() {
         const gateZ = minZ + entranceReturnDepth;
         const checkpointBaseX = singleGateCenterX + direction * 0.12 - direction * 2.20;
         const checkpointBaseZ = gateZ + 3.30;
+        // Convert the single-gate plane into the checkpoint's rotated local
+        // coordinates so the canopy can extend over that gate as well.
+        const gateLocalX = -layoutDirection * (gateZ - checkpointBaseZ);
+        const gateLocalZPositions = [smallGateStartX, smallGateEndX].map((worldX) => (
+            layoutDirection * (worldX - checkpointBaseX)
+        ));
+        const gateLocalZMin = Math.min(...gateLocalZPositions) - 0.10;
+        const gateLocalZMax = Math.max(...gateLocalZPositions) + 0.10;
         // Place the computer on the inside face of the return wall, leaving
         // a small service clearance so its desk does not intersect the wall.
         // Align the station with the broad return-wall panel, leaving only a
@@ -4570,8 +4913,20 @@ function createGateSecurityCheckpoints() {
         // double gate.
         // Keep the conveyor on the opposite side of the walkthrough frame,
         // matching the reference gate's screening flow.
-        addXrayScanner(checkpoint, name, -direction * 1.95);
+        const scannerLocalX = -direction * 1.95;
+        addXrayScanner(checkpoint, name, scannerLocalX);
         addMonitoringStation(checkpoint, name, monitorLocalX, monitorLocalZ);
+        addSecurityCheckpointCanopy(
+            checkpoint,
+            name,
+            monitorLocalX,
+            monitorLocalZ,
+            scannerLocalX,
+            -layoutDirection * 0.90,
+            gateLocalX,
+            gateLocalZMin,
+            gateLocalZMax
+        );
         checkpointGroup.add(checkpoint);
     });
 
