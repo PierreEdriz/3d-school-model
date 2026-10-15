@@ -3281,6 +3281,11 @@ function createCampusPerimeterFence() {
         fenceBaseY + fenceWallHeight + 1.28,
         fenceBaseY + fenceHeight - 0.08
     ];
+    // Denser upper grille spacing gives the fence above the concrete base a
+    // stronger, more realistic barred pattern.
+    // Shared by the perimeter fence and both gate panels so their vertical
+    // bars keep the same rhythm.
+    const fenceVerticalBarSpacing = 0.36;
 
     const addFenceBox = (name, width, height, depth, x, y, z, material, isObstacle = false) => {
         const mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), material);
@@ -3333,7 +3338,7 @@ function createCampusPerimeterFence() {
             );
         });
 
-        distributeFence(start, end, 0.85).forEach((position, barIndex) => {
+        distributeFence(start, end, fenceVerticalBarSpacing).forEach((position, barIndex) => {
             addFenceBox(
                 `${name}Bar${barIndex + 1}`,
                 fenceBarThickness,
@@ -3608,7 +3613,11 @@ function createCampusPerimeterFence() {
             fenceMat
         );
 
-        distributeFence(-smallGatePanelWidth / 2 + 0.38, smallGatePanelWidth / 2 - 0.38, 0.62).forEach((offset, barIndex) => {
+        distributeFence(
+            -smallGatePanelWidth / 2 + 0.38,
+            smallGatePanelWidth / 2 - 0.38,
+            fenceVerticalBarSpacing
+        ).forEach((offset, barIndex) => {
             addFenceBox(
                 `campusEntrance${entranceName}SmallGateBar${barIndex + 1}`,
                 fenceBarThickness,
@@ -3650,28 +3659,29 @@ function createCampusPerimeterFence() {
     ];
     const doubleGateLeafGap = 0.08;
     const doubleGateCenterDividerWidth = fenceBarThickness + 0.14;
-    // Compensate for the oblique editor view so the center divider reads at
-    // the visual midpoint of the opening, matching the reference image.
-    const doubleGateSplitRatio = 0.37;
-
+    // Keep the outermost vertical bars close to each leaf's side stiles so
+    // the grille fills the same limits as the gate frame in the reference.
+    const doubleGateBarInset = 0.14;
     const addDoubleGate = (entranceName, outerX, direction) => {
-        // Use the single gate's inner post and the opposite concrete post as
-        // the two limits, so the double gate never overlaps the single gate.
+        // The double door starts at the inner post of the adjacent pedestrian
+        // gate, not at the entrance's outer post.  Its other limit is the
+        // opposite concrete post circled in the reference.  The right
+        // circled post is the end of the rotated wall extension, one
+        // extension-length before the return-wall post.  Using these two
+        // posts keeps both the single gate and the return wall out of the
+        // double-door span.
         const triangleInnerX = outerX + direction * entranceRotatedExtension;
         const singleGateStartX = triangleInnerX + direction * smallGateSideGap;
         const singleGateInnerPostX = singleGateStartX + direction * smallGateWidth;
-        const oppositeConcretePostX = outerX + direction * gateWidth;
+        const oppositeConcretePostX = outerX + direction * (gateWidth - entranceRotatedExtension);
         const doubleGateMinX = Math.min(singleGateInnerPostX, oppositeConcretePostX);
         const doubleGateMaxX = Math.max(singleGateInnerPostX, oppositeConcretePostX);
         // Keep every gate frame inside the post faces instead of letting the
         // rails and stiles pass through the concrete boundary posts.
         const doubleGateOpeningMinX = doubleGateMinX + fencePostWidth / 2 + gatePostClearance;
         const doubleGateOpeningMaxX = doubleGateMaxX - fencePostWidth / 2 - gatePostClearance;
-        const doubleGateSpanWidth = doubleGateOpeningMaxX - doubleGateOpeningMinX;
-        const splitRatio = direction > 0
-            ? doubleGateSplitRatio
-            : 1 - doubleGateSplitRatio;
-        const doubleGateCenterX = doubleGateOpeningMinX + doubleGateSpanWidth * splitRatio;
+        // The divider is the exact midpoint between those same two posts.
+        const doubleGateCenterX = (doubleGateOpeningMinX + doubleGateOpeningMaxX) / 2;
         const leftLeafWidth = doubleGateCenterX - doubleGateOpeningMinX - doubleGateLeafGap / 2;
         const rightLeafWidth = doubleGateOpeningMaxX - doubleGateCenterX - doubleGateLeafGap / 2;
         const gateZ = minZ + entranceReturnDepth;
@@ -3712,7 +3722,11 @@ function createCampusPerimeterFence() {
                 fenceMat
             );
 
-            distributeFence(-leafWidth / 2 + 0.38, leafWidth / 2 - 0.38, 0.72).forEach((offset, barIndex) => {
+            distributeFence(
+                -leafWidth / 2 + doubleGateBarInset,
+                leafWidth / 2 - doubleGateBarInset,
+                fenceVerticalBarSpacing
+            ).forEach((offset, barIndex) => {
                 addFenceBox(
                     `campusEntrance${entranceName}${leafName}Bar${barIndex + 1}`,
                     fenceBarThickness,
