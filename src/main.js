@@ -3253,6 +3253,27 @@ function createCampusPerimeterFence() {
         entranceRotatedExtension
     } = layout;
 
+    // Fit the gray campus platform to the finished fence bounds, including
+    // the front entrance extension, so no side of the campus floats beyond
+    // the ground or leaves a blue gap inside the perimeter.
+    const groundPath = scene.getObjectByName('groundPath');
+    const streetGround = scene.getObjectByName('streetGround');
+    const fenceCenterX = (minX + maxX) / 2;
+    const fitGroundPlane = (plane, sidePadding, frontPadding = sidePadding, backPadding = sidePadding) => {
+        const params = plane?.geometry?.parameters;
+        if (!plane || !params?.width || !params?.height) return;
+        const groundMinZ = minZ - frontPadding;
+        const groundMaxZ = maxZ + backPadding;
+        const targetWidth = maxX - minX + sidePadding * 2;
+        const targetDepth = groundMaxZ - groundMinZ;
+        plane.scale.x = targetWidth / params.width;
+        plane.scale.y = targetDepth / params.height;
+        plane.position.x = fenceCenterX;
+        plane.position.z = (groundMinZ + groundMaxZ) / 2;
+    };
+    fitGroundPlane(groundPath, 0.75, 10.0, 0.75);
+    fitGroundPlane(streetGround, 5.0, 12.0, 5.0);
+
     const fenceGroup = new THREE.Group();
     fenceGroup.name = 'campusPerimeterFence';
     fenceGroup.userData.isComponent = true;
@@ -6324,6 +6345,9 @@ function selectObject(obj) {
 
         if (selectedObject && selectedObject.userData.isComponent) {
             transformControls.attach(selectedObject);
+            // Keep Edit Mode clean: selection remains available through the
+            // properties panel, but the colored transform gizmo stays hidden.
+            transformControls.getHelper().visible = false;
             updatePropertiesPanel();
         } else {
             deselect();
@@ -6439,6 +6463,7 @@ function applyComponentVisibilityToggles() {
     const doorsToggle = document.getElementById('chk-toggle-doors');
     const windowsToggle = document.getElementById('chk-toggle-windows');
     const rollupShuttersToggle = document.getElementById('chk-toggle-rollup-shutters');
+    if (rollupShuttersToggle) rollupShuttersToggle.checked = false;
     setChairsVisibility(chairsToggle ? chairsToggle.checked : false);
     setBlackboardsVisibility(blackboardsToggle ? blackboardsToggle.checked : true);
     setDoorsVisibility(doorsToggle ? doorsToggle.checked : true);
@@ -6582,6 +6607,15 @@ function setMode(mode) {
 
         camera = editCamera;
         orbitControls.enabled = true;
+
+        // Do not show the transform gizmo in the campus Edit Mode view.
+        if (transformControls) transformControls.getHelper().visible = false;
+
+        // Keep the roll-up shutters visible and synchronized in Edit Mode.
+        const rollupShuttersToggle = document.getElementById('chk-toggle-rollup-shutters');
+        if (rollupShuttersToggle) {
+            setRollupShutterState(rollupShuttersToggle.checked);
+        }
 
         // Re-enable editing tools
         document.getElementById('left-sidebar').style.display = 'block';
