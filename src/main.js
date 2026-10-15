@@ -107,6 +107,16 @@ const smokeDetectorMat = new THREE.MeshStandardMaterial({
     roughness: 0.8,
     metalness: 0.0
 });
+const rollupShutterMat = new THREE.MeshStandardMaterial({
+    color: 0x26342f,
+    roughness: 0.45,
+    metalness: 0.72
+});
+const rollupShutterTrimMat = new THREE.MeshStandardMaterial({
+    color: 0x151d1a,
+    roughness: 0.38,
+    metalness: 0.82
+});
 
 function createDigitalLock(width, height, thickness, handleSide = 'left', axis = 'z') {
     const lockGroup = new THREE.Group();
@@ -5823,7 +5833,103 @@ function createPlasticDoor(width, height, thickness, colorHex, handleSide = 'lef
 
         return group;
     }
-function createJalousieWindow(zCenter, width = 4, wallX = -CLASS_WIDTH / 2) {
+    function createRollupShutter(width, height, wallX) {
+        const shutter = new THREE.Group();
+        shutter.name = 'rollUpShutter';
+        shutter.userData.type = 'rollupShutter';
+        // Mount the shutter inside the room, toward the room center, on either wall.
+        shutter.position.x = wallX < 0 ? 0.12 : -0.12;
+
+        // Match the roll-up curtain exactly to the existing window width.
+        // The guides are inset below so their outside edges stay flush with
+        // the window instead of extending into the neighboring wall.
+        const shutterWidth = Math.max(width, 0.2);
+        const inwardDirection = wallX < 0 ? 1 : -1;
+        const slatCount = Math.max(6, Math.ceil(height / 0.1));
+        const slatHeight = Math.min(0.075, (height / slatCount) * 0.68);
+        const curtain = new THREE.Group();
+        curtain.name = 'rollUpCurtain';
+        curtain.userData.type = 'rollupCurtain';
+        curtain.userData.height = height;
+        shutter.add(curtain);
+
+        // Solid backing keeps the closed shutter secure even where the slats
+        // have decorative separation lines.
+        const solidPanel = new THREE.Mesh(
+            new THREE.BoxGeometry(0.05, height + 0.04, shutterWidth),
+            rollupShutterMat
+        );
+        solidPanel.name = 'rollUpSolidPanel';
+        solidPanel.userData.type = 'rollupSolidPanel';
+        solidPanel.position.set(0, height / 2, 0);
+        solidPanel.castShadow = true;
+        solidPanel.receiveShadow = true;
+        curtain.add(solidPanel);
+
+        // These are flush surface ribs, not separate overlapping slats. The
+        // solid panel underneath closes the shutter completely.
+        const slatGeometry = new THREE.BoxGeometry(0.008, slatHeight, shutterWidth);
+        for (let i = 0; i < slatCount; i++) {
+            const slat = new THREE.Mesh(slatGeometry, rollupShutterMat);
+            slat.position.set(inwardDirection * 0.029, (i + 0.5) * (height / slatCount), 0);
+            slat.castShadow = true;
+            slat.receiveShadow = true;
+            curtain.add(slat);
+        }
+
+        const guideGeometry = new THREE.BoxGeometry(0.1, height, 0.10);
+        const guideInset = 0.05;
+        [-1, 1].forEach((side) => {
+            const guide = new THREE.Mesh(guideGeometry, rollupShutterTrimMat);
+            guide.name = 'rollUpSideGuide';
+            guide.position.set(0, height / 2, side * (shutterWidth / 2 - guideInset));
+            guide.castShadow = true;
+            guide.receiveShadow = true;
+            shutter.add(guide);
+        });
+
+        const topHousing = new THREE.Mesh(
+            new THREE.BoxGeometry(0.14, 0.14, shutterWidth),
+            rollupShutterTrimMat
+        );
+        // Keep the housing flush with the top edge of the closed curtain so
+        // there is no visible gap when the shutter is down.
+        const housingLift = 0;
+        topHousing.position.y = height + 0.07 + housingLift;
+        topHousing.castShadow = true;
+        topHousing.receiveShadow = true;
+        shutter.add(topHousing);
+
+        const roller = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.06, 0.06, shutterWidth, 16),
+            rollupShutterTrimMat
+        );
+        roller.rotation.x = Math.PI / 2;
+        roller.position.y = height + 0.07 + housingLift;
+        roller.castShadow = true;
+        roller.receiveShadow = true;
+        shutter.add(roller);
+
+        return shutter;
+    }
+
+    function addRollupShutter(windowGroup, width, height, wallX) {
+        windowGroup.add(createRollupShutter(width, height, wallX));
+    }
+
+    function addDoorRollupShutter(doorZ, width, height) {
+        const shutter = createRollupShutter(width, height, CLASS_WIDTH / 2);
+        shutter.name = 'doorRollUpShutter';
+        shutter.userData.type = 'doorRollupShutter';
+        shutter.userData.isSecurityDevice = true;
+        // The classroom doors are on the +X wall. Keep the shutter just
+        // inside that wall, independent from the swinging door panel.
+        shutter.position.x += CLASS_WIDTH / 2;
+        shutter.position.z = doorZ;
+        scene.add(shutter);
+    }
+
+    function createJalousieWindow(zCenter, width = 4, wallX = -CLASS_WIDTH / 2) {
         const group = new THREE.Group();
         group.userData.type = 'window';
         group.position.set(wallX, 1.0, zCenter);
@@ -5845,9 +5951,10 @@ function createJalousieWindow(zCenter, width = 4, wallX = -CLASS_WIDTH / 2) {
             slat.rotation.z = 0.4; // Tilt the jalousie slats
             group.add(slat);
         }
+        addRollupShutter(group, width, 1.5, wallX);
         return group;
     }
-function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 2) {
+    function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 2) {
         const group = new THREE.Group();
         group.userData.type = 'window';
         group.position.set(wallX, 2.7, zCenter); // Base at y=2.7
@@ -5867,6 +5974,7 @@ function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 
             slat.rotation.z = 0.4;
             group.add(slat);
         }
+        addRollupShutter(group, width, 0.6, wallX);
         return group;
     }
 
@@ -5952,10 +6060,10 @@ function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 
         leftMidCenter.position.set(-CLASS_WIDTH / 2, 1.75, zCenter);
         scene.add(leftMidCenter);
         obstacles.push(leftMidCenter);
-        
-        // Exactly three evenly spaced windows on the wall opposite the doors.
-        const windowPositions = [-WINDOW_OFFSET, WINDOW_OFFSET];
-        windowPositions.forEach((offset, index) => {
+
+        // Keep the original two evenly spaced windows on the wall opposite
+        // the doors. Each window creates exactly one matching roll-up shutter.
+        [-WINDOW_OFFSET, WINDOW_OFFSET].forEach((offset, index) => {
             const window = createJalousieWindow(zCenter + zDir * offset, WINDOW_WIDTH, -CLASS_WIDTH / 2);
             window.name = `classroomWindow${index + 1}`;
             scene.add(window);
@@ -5991,7 +6099,7 @@ function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 
         scene.add(leftWallBoardSide);
         obstacles.push(leftWallBoardSide);
 
-        // Solid wall strips only fill the gaps between the three windows.
+        // Solid wall strips only fill the gaps between the two windows.
         // Right Wall
         const doorWidth = 1.6;
         const doorHeight = 2.5;
@@ -6014,22 +6122,12 @@ function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 
         scene.add(rightMidTop);
         obstacles.push(rightMidTop);
 
-        const rightMidFront = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 1.95), wallMat);
-        rightMidFront.position.set(CLASS_WIDTH / 2, 1.75, zCenter + zDir * 4.925);
-        scene.add(rightMidFront);
-        obstacles.push(rightMidFront);
-
         const rightMidCenter = new THREE.Mesh(new THREE.BoxGeometry(0.2, CLASS_HEIGHT, 2.8), wallMat);
         rightMidCenter.position.set(CLASS_WIDTH / 2, 1.75, zCenter);
         scene.add(rightMidCenter);
         obstacles.push(rightMidCenter);
 
-        const rightMidBack = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.5, 1.95), wallMat);
-        rightMidBack.position.set(CLASS_WIDTH / 2, 1.75, zCenter - zDir * 4.925);
-        scene.add(rightMidBack);
-        obstacles.push(rightMidBack);
-
-        // Matching three windows on the opposite wall, placed between the doors.
+        // Matching two windows on the opposite wall, placed between the doors.
         [-WINDOW_OFFSET, WINDOW_OFFSET].forEach((offset, index) => {
             const window = createJalousieWindow(zCenter + zDir * offset, WINDOW_WIDTH, CLASS_WIDTH / 2 + 0.01);
             window.name = `oppositeClassroomWindow${index + 1}`;
@@ -6100,6 +6198,9 @@ function createSmallJalousieWindow(zCenter, width = 1.2, wallX = -CLASS_WIDTH / 
         scene.add(doorGroup2);
         doorMeshes.push(doorGroup2);
         obstacles.push(dMesh2);
+
+        addDoorRollupShutter(door1Z, doorWidth, doorHeight);
+        addDoorRollupShutter(door2Z, doorWidth, doorHeight);
         
         // Partition Wall at the front (except for the last room)
         const partitionWall = new THREE.Mesh(new THREE.BoxGeometry(CLASS_WIDTH + 0.4, CLASS_HEIGHT, 0.2), wallMat);
@@ -6274,7 +6375,7 @@ function setBlackboardsVisibility(visible) {
 
 function setDoorsVisibility(visible) {
     scene.traverse((object) => {
-        if (object.userData?.openType) {
+        if (object.userData?.openType || object.userData?.type === 'doorRollupShutter') {
             object.visible = visible;
         }
     });
@@ -6288,15 +6389,61 @@ function setWindowsVisibility(visible) {
     });
 }
 
+function applyRollupShutterState(shutter, isDown) {
+    const curtain = shutter.children.find((child) => child.userData?.type === 'rollupCurtain');
+    if (!curtain) return;
+
+    // When raised, store the curtain inside the housing so the housing is
+    // the only visible roll-up part above the opening.
+    const curtainHeight = Number(curtain.userData?.height) || 1.5;
+    const isRaised = !isDown;
+    curtain.visible = isDown;
+    curtain.position.y = isRaised ? curtainHeight * 0.76 : 0;
+    curtain.scale.y = isRaised ? 0.24 : 1;
+
+    // Side tracks are needed only while the shutter is down.
+    shutter.children.forEach((child) => {
+        if (child.name === 'rollUpSideGuide') child.visible = isDown;
+    });
+
+    const solidPanel = curtain.getObjectByName('rollUpSolidPanel');
+    if (solidPanel) solidPanel.visible = isDown;
+}
+
+function setRollupShutterState(isDown) {
+    scene.traverse((object) => {
+        if (object.userData?.type === 'window') {
+            let shutter = null;
+            object.children.forEach((child) => {
+                const isRollup = child.userData?.type === 'rollupShutter';
+                // A closed shutter fully covers the window. Hide the original
+                // frame and glass parts underneath it so no lines or gaps
+                // bleed through the closed panel.
+                child.visible = isRollup ? true : !isDown;
+                if (isRollup) shutter = child;
+            });
+
+            if (shutter) applyRollupShutterState(shutter, isDown);
+            return;
+        }
+
+        if (object.userData?.type === 'doorRollupShutter') {
+            applyRollupShutterState(object, isDown);
+        }
+    });
+}
+
 function applyComponentVisibilityToggles() {
     const chairsToggle = document.getElementById('chk-toggle-chairs');
     const blackboardsToggle = document.getElementById('chk-toggle-blackboards');
     const doorsToggle = document.getElementById('chk-toggle-doors');
     const windowsToggle = document.getElementById('chk-toggle-windows');
+    const rollupShuttersToggle = document.getElementById('chk-toggle-rollup-shutters');
     setChairsVisibility(chairsToggle ? chairsToggle.checked : false);
     setBlackboardsVisibility(blackboardsToggle ? blackboardsToggle.checked : true);
     setDoorsVisibility(doorsToggle ? doorsToggle.checked : true);
     setWindowsVisibility(windowsToggle ? windowsToggle.checked : true);
+    setRollupShutterState(rollupShuttersToggle ? rollupShuttersToggle.checked : true);
 }
 
 function getBuildingVisibilityConfigs() {
@@ -6372,6 +6519,14 @@ function setupUI() {
     if (chkToggleWindows) {
         chkToggleWindows.addEventListener('change', (e) => {
             setWindowsVisibility(e.target.checked);
+        });
+    }
+
+    // Roll-up shutter position Toggle
+    const chkToggleRollupShutters = document.getElementById('chk-toggle-rollup-shutters');
+    if (chkToggleRollupShutters) {
+        chkToggleRollupShutters.addEventListener('change', (e) => {
+            setRollupShutterState(e.target.checked);
         });
     }
 
