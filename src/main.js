@@ -15,7 +15,13 @@ let moveForward = false;
 let moveBackward = false;
 let moveLeft = false;
 let moveRight = false;
+let rotateUp = false;
+let rotateDown = false;
+let rotateLeft = false;
+let rotateRight = false;
 let prevTime = performance.now();
+const VIEW_ROTATION_SPEED = THREE.MathUtils.degToRad(90);
+const MAX_VIEW_PITCH = THREE.MathUtils.degToRad(80);
 
 // Classroom objects
 const objects = []; // Editable objects
@@ -82,6 +88,39 @@ const securityLensMat = new THREE.MeshStandardMaterial({
     roughness: 0.2,
     metalness: 0.45
 });
+const fenceCctvHousingMat = new THREE.MeshStandardMaterial({
+    color: 0xe9ecea,
+    roughness: 0.42,
+    metalness: 0.22
+});
+const fenceCctvPoleMat = new THREE.MeshStandardMaterial({
+    color: 0xf1f3f1,
+    roughness: 0.36,
+    metalness: 0.28
+});
+const fenceCctvFrontMat = new THREE.MeshStandardMaterial({
+    color: 0x151b1e,
+    roughness: 0.28,
+    metalness: 0.58
+});
+const fenceCctvLensMat = new THREE.MeshStandardMaterial({
+    color: 0x315762,
+    emissive: 0x0a2028,
+    emissiveIntensity: 0.55,
+    roughness: 0.18,
+    metalness: 0.48
+});
+const fenceCctvDomeMat = new THREE.MeshStandardMaterial({
+    color: 0x111a20,
+    roughness: 0.12,
+    metalness: 0.25,
+    transparent: true,
+    opacity: 0.78,
+    depthWrite: false
+});
+// Keep every CCTV head proportionate to its pole, bracket, and building
+// scale.  Mounting hardware remains full size so the cameras do not float.
+const CCTV_MODEL_SCALE = 0.42;
 const extinguisherMat = new THREE.MeshStandardMaterial({
     color: 0xc7372f,
     roughness: 0.42,
@@ -143,35 +182,168 @@ function createDigitalLock(width, height, thickness, handleSide = 'left', axis =
     return lockGroup;
 }
 
-function addRoomCctv(position, target, name) {
+function addRoomCctv(position, target, name, parent = scene) {
+    // Use the same PTZ dome model as the outdoor cameras so every CCTV
+    // has a consistent housing, lens, and silhouette across the campus.
+    const cameraGroup = addFencePtzDomeCctv(position, target, name, parent);
+
+    // Extend a slim tubular support from the camera housing up to the room
+    // ceiling so the indoor unit has a visible, solid mounting point.
+    const poleStartY = position.y + 0.08;
+    const poleEndY = CLASS_HEIGHT - 0.03;
+    const poleHeight = Math.max(0.16, poleEndY - poleStartY);
+    const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055, 0.055, poleHeight, 16),
+        fenceCctvPoleMat
+    );
+    pole.position.set(position.x, poleStartY + poleHeight / 2, position.z);
+    pole.name = `${name}MountPole`;
+    pole.castShadow = true;
+    pole.receiveShadow = true;
+    pole.userData.isSecurityDevice = true;
+    pole.userData.isRoomCctvMount = true;
+    pole.userData.isCctvMount = true;
+
+    const ceilingPlate = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.11, 0.11, 0.05, 16),
+        fenceCctvPoleMat
+    );
+    ceilingPlate.position.set(position.x, CLASS_HEIGHT - 0.025, position.z);
+    ceilingPlate.name = `${name}MountCeilingPlate`;
+    ceilingPlate.castShadow = true;
+    ceilingPlate.receiveShadow = true;
+    ceilingPlate.userData.isSecurityDevice = true;
+    ceilingPlate.userData.isRoomCctvMount = true;
+    ceilingPlate.userData.isCctvMount = true;
+    parent.add(pole, ceilingPlate);
+
+    cameraGroup.userData.isRoomCctv = true;
+    cameraGroup.userData.isBuildingSecurityDevice = true;
+    return cameraGroup;
+}
+
+function addFencePtzDomeCctv(position, target, name, parent = scene) {
     const cameraGroup = new THREE.Group();
     cameraGroup.position.copy(position);
     cameraGroup.lookAt(target);
 
-    const mount = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.045, 0.045, 0.10, 12),
-        securityCameraMat
+    const topMount = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.11, 0.11, 0.10, 20),
+        fenceCctvHousingMat
     );
-    mount.position.y = 0.045;
-    const body = new THREE.Mesh(
-        new THREE.BoxGeometry(0.34, 0.18, 0.26),
-        securityCameraMat
+    topMount.position.set(0, 0.045, 0.02);
+
+    const mountingBlock = new THREE.Mesh(
+        new THREE.BoxGeometry(0.22, 0.10, 0.20),
+        fenceCctvHousingMat
     );
-    body.position.y = -0.06;
-    const lens = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.055, 0.065, 0.08, 12),
-        securityLensMat
+    mountingBlock.position.set(0, -0.005, 0.08);
+
+    // Upper weather dome: the hemisphere is inverted under the mounting
+    // point so the flat rim naturally shelters the PTZ camera below it.
+    const dome = new THREE.Mesh(
+        new THREE.SphereGeometry(0.37, 24, 14, 0, Math.PI * 2, 0, Math.PI / 2),
+        fenceCctvHousingMat
     );
-    lens.rotation.x = -Math.PI / 2;
-    lens.position.set(0, -0.06, -0.17);
-    [mount, body, lens].forEach((part) => {
+    dome.position.set(0, -0.37, 0);
+
+    const domeRim = new THREE.Mesh(
+        new THREE.TorusGeometry(0.32, 0.025, 8, 24),
+        fenceCctvHousingMat
+    );
+    domeRim.rotation.x = Math.PI / 2;
+    domeRim.position.set(0, -0.37, 0);
+
+    const smokedDome = new THREE.Mesh(
+        new THREE.SphereGeometry(0.31, 24, 14, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
+        fenceCctvDomeMat
+    );
+    smokedDome.position.set(0, -0.40, 0);
+    smokedDome.renderOrder = 2;
+
+    const innerCameraBody = new THREE.Mesh(
+        new THREE.SphereGeometry(0.25, 20, 14),
+        fenceCctvHousingMat
+    );
+    innerCameraBody.scale.set(0.82, 0.72, 0.76);
+    innerCameraBody.position.set(0, -0.51, -0.015);
+    innerCameraBody.renderOrder = 1;
+
+    const lensHousing = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.13, 0.13, 20),
+        fenceCctvFrontMat
+    );
+    lensHousing.rotation.x = Math.PI / 2;
+    // Object3D.lookAt() points this group toward the target along local +Z.
+    // Keep the visible lens on that same front/outward side of the dome.
+    lensHousing.position.set(0, -0.52, 0.23);
+
+    const lensRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.086, 0.018, 8, 20),
+        fenceCctvFrontMat
+    );
+    lensRing.rotation.x = Math.PI / 2;
+    lensRing.position.set(0, -0.52, 0.30);
+
+    const lensGlass = new THREE.Mesh(
+        new THREE.SphereGeometry(0.075, 16, 10),
+        fenceCctvLensMat
+    );
+    lensGlass.position.set(0, -0.52, 0.315);
+
+    const leftPivot = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.075, 0.075, 0.08, 16),
+        fenceCctvHousingMat
+    );
+    leftPivot.rotation.z = Math.PI / 2;
+    leftPivot.position.set(-0.20, -0.49, 0.01);
+
+    const rightPivot = leftPivot.clone();
+    rightPivot.position.x = 0.20;
+
+    const pivotPlate = new THREE.Mesh(
+        new THREE.BoxGeometry(0.18, 0.12, 0.16),
+        fenceCctvHousingMat
+    );
+    pivotPlate.position.set(0, -0.45, 0.08);
+
+    const cableCurve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0.12, 0.02, 0.14),
+        new THREE.Vector3(0.20, -0.05, 0.22),
+        new THREE.Vector3(0.21, -0.17, 0.18),
+        new THREE.Vector3(0.18, -0.25, 0.11)
+    ]);
+    const cable = new THREE.Mesh(
+        new THREE.TubeGeometry(cableCurve, 16, 0.014, 8, false),
+        fenceCctvFrontMat
+    );
+
+    [
+        topMount,
+        mountingBlock,
+        dome,
+        domeRim,
+        smokedDome,
+        innerCameraBody,
+        lensHousing,
+        lensRing,
+        lensGlass,
+        leftPivot,
+        rightPivot,
+        pivotPlate,
+        cable
+    ].forEach((part) => {
         part.castShadow = true;
         part.receiveShadow = true;
         cameraGroup.add(part);
     });
+
     cameraGroup.name = name;
     cameraGroup.userData.isSecurityDevice = true;
-    scene.add(cameraGroup);
+    cameraGroup.userData.isCctv = true;
+    cameraGroup.scale.setScalar(CCTV_MODEL_SCALE);
+    parent.add(cameraGroup);
+    return cameraGroup;
 }
 
 function addRoomFireExtinguisher(position, name) {
@@ -308,22 +480,25 @@ function init() {
 
     // Renderer
     renderer = new THREE.WebGLRenderer({
-        antialias: false,
+        antialias: true,
         powerPreference: 'high-performance'
     });
     renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
-    // The scene does not use a shadow-casting light, so keeping the shadow
-    // map enabled only adds renderer overhead.
+    // Render high-DPI displays at a sharper resolution so distant details
+    // stay clearer without forcing a high pixel ratio on standard displays.
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 3));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.05;
     renderer.shadowMap.enabled = false;
     container.appendChild(renderer.domElement);
 
     // Lights
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x444444, 0.6);
+    const hemiLight = new THREE.HemisphereLight(0xf7fbff, 0x5b625d, 0.72);
     hemiLight.position.set(0, 20, 0);
     scene.add(hemiLight);
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    const dirLight = new THREE.DirectionalLight(0xfff3df, 0.72);
     dirLight.position.set(-10, 10, -10);
     dirLight.castShadow = false;
     scene.add(dirLight);
@@ -334,6 +509,11 @@ function init() {
     // Controls
     orbitControls = new OrbitControls(editCamera, renderer.domElement);
     orbitControls.target.set(0, 0, 0);
+    // Keep camera movement smooth and responsive without inertia or glide.
+    orbitControls.enableDamping = false;
+    orbitControls.rotateSpeed = 0.55;
+    orbitControls.panSpeed = 0.65;
+    orbitControls.zoomSpeed = 0.75;
     orbitControls.update();
 
     transformControls = new TransformControls(editCamera, renderer.domElement);
@@ -373,6 +553,88 @@ function init() {
     createGateSecurityCheckpoints();
     applyComponentVisibilityToggles();
     applyBuildingVisibilityToggles();
+    setInitialCampusView();
+    addVisualEdgeDefinition(
+        scene.getObjectByName('newRoof4'),
+        (object) => object.name === 'newLeftRoof' || object.name === 'newRightRoof'
+    );
+    addVisualEdgeDefinition(
+        scene.getObjectByName('coveredCourt'),
+        (object) => object.name === 'coveredCourtRoofLeft' ||
+            object.name === 'coveredCourtRoofRight' ||
+            object.name === 'coveredCourtRoofRidge' ||
+            object.name === 'coveredCourtRoofGutterLeft' ||
+            object.name === 'coveredCourtRoofGutterRight' ||
+            object.name.includes('coveredCourtColumn')
+    );
+    addVisualEdgeDefinition(
+        scene.getObjectByName('campusPerimeterFence'),
+        (object) => object.name.includes('ConcreteBase') ||
+            object.name.endsWith('Post') ||
+            object.name.endsWith('PostBase') ||
+            object.name.endsWith('PostCap')
+    );
+    configureTextureFiltering(scene);
+}
+
+function configureTextureFiltering(root) {
+    if (!renderer || !root?.traverse) return;
+
+    const maxAnisotropy = Math.min(renderer.capabilities.getMaxAnisotropy(), 8);
+    if (maxAnisotropy <= 1) return;
+
+    const textureSlots = [
+        'map',
+        'alphaMap',
+        'aoMap',
+        'bumpMap',
+        'displacementMap',
+        'emissiveMap',
+        'metalnessMap',
+        'normalMap',
+        'roughnessMap'
+    ];
+    const tunedTextures = new Set();
+
+    root.traverse((object) => {
+        const materials = Array.isArray(object.material)
+            ? object.material
+            : [object.material];
+
+        materials.forEach((material) => {
+            if (!material) return;
+            textureSlots.forEach((slot) => {
+                const texture = material[slot];
+                if (!texture?.isTexture || tunedTextures.has(texture)) return;
+                texture.anisotropy = maxAnisotropy;
+                texture.needsUpdate = true;
+                tunedTextures.add(texture);
+            });
+        });
+    });
+}
+
+function addVisualEdgeDefinition(root, shouldOutline, color = 0x2f4a42, opacity = 0.48) {
+    if (!root) return;
+
+    const edgeMaterial = new THREE.LineBasicMaterial({
+        color,
+        transparent: true,
+        opacity,
+        depthWrite: false
+    });
+    const meshes = [];
+
+    root.traverse((object) => {
+        if (object.isMesh && object.geometry && shouldOutline(object)) meshes.push(object);
+    });
+
+    meshes.forEach((mesh) => {
+        const edges = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 30), edgeMaterial);
+        edges.name = `${mesh.name || 'mesh'}VisualEdges`;
+        edges.userData.isVisualEdgeDefinition = true;
+        mesh.add(edges);
+    });
 }
 
 function createEndRoomStairToSecond() {
@@ -2002,6 +2264,14 @@ function trimBackBuildingToFourRooms(backBuilding) {
         const absCenterZ = Math.abs(centerZ);
         const name = part.name || '';
 
+        // Hallway CCTV units belong to the attached add-room corridors. Keep
+        // them when the rear wing is shortened and move them with the same
+        // capped end instead of deleting them as removed-room devices.
+        if (part.userData?.isHallwayCctv) {
+            if (absCenterZ > BACK_BUILDING_CORE_HALF_LENGTH + 0.25) markShift(part);
+            return;
+        }
+
         // Keep the roof and interior ceiling over the four-room core plus the
         // two compact attached end sections.
         if (name === 'newRoof4') {
@@ -2201,14 +2471,6 @@ function createUShapedBuildingLayout() {
     }
     if (streetGround?.geometry?.parameters?.width) {
         streetGround.scale.x = Math.max(streetGround.scale.x, layoutWidth / streetGround.geometry.parameters.width);
-    }
-
-    // Frame the full U layout in the editor on startup.
-    if (editCamera && orbitControls) {
-        const viewDistance = Math.max(layoutWidth, topCenterZ + buildingWidth) * 1.05;
-        editCamera.position.set(viewDistance * 0.72, viewDistance * 0.58, viewDistance * 0.82);
-        orbitControls.target.set(0, CLASS_HEIGHT * 1.5, topCenterZ / 3);
-        orbitControls.update();
     }
 
 }
@@ -2528,10 +2790,11 @@ function createCentralCoveredCourt() {
     coveredCourt.userData.isComponent = true;
     coveredCourt.userData.type = 'coveredCourt';
 
-    const concreteMat = new THREE.MeshStandardMaterial({
-        color: 0xb9b7ad,
-        roughness: 0.86,
-        metalness: 0.0
+    const roomFloorMat = new THREE.MeshStandardMaterial({
+        color: 0xf5df9d,
+        roughness: 0.95,
+        metalness: 0.0,
+        side: THREE.DoubleSide
     });
     const roofMat = new THREE.MeshStandardMaterial({
         color: 0x78a99d,
@@ -2549,34 +2812,44 @@ function createCentralCoveredCourt() {
         metalness: 0.28
     });
     const columnMat = new THREE.MeshStandardMaterial({
-        color: 0xe8d9b7,
+        // Match the structural posts used by the classroom rooms.
+        color: 0xf5df9d,
         roughness: 0.84,
         metalness: 0.02
     });
-    const courtLineMat = new THREE.MeshStandardMaterial({
-        color: 0xf4ead1,
-        roughness: 0.64,
-        metalness: 0.0
+    const courtLineMat = new THREE.MeshBasicMaterial({
+        color: 0x090909,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1
     });
     const serviceMat = new THREE.MeshStandardMaterial({
         color: 0xd9c9a6,
         roughness: 0.88,
         metalness: 0.0
     });
+    // Match the raised stage to the adjacent stage-room walls exactly.
+    const stageColor = serviceMat.color.getHex();
     const stageDeckMat = new THREE.MeshStandardMaterial({
-        color: 0x8e6544,
+        color: stageColor,
         roughness: 0.82,
         metalness: 0.0
     });
     const stageBackdropMat = new THREE.MeshStandardMaterial({
-        color: 0xd6c8a8,
+        color: stageColor,
         roughness: 0.88,
         metalness: 0.0
     });
     const stageAccentMat = new THREE.MeshStandardMaterial({
-        color: 0x6d8f79,
-        roughness: 0.72,
-        metalness: 0.04
+        color: stageColor,
+        roughness: 0.82,
+        metalness: 0.0
+    });
+    const stageTrimMat = new THREE.MeshStandardMaterial({
+        color: stageColor,
+        roughness: 0.84,
+        metalness: 0.0
     });
     const backboardMat = new THREE.MeshStandardMaterial({
         color: 0x9fc4c1,
@@ -2651,15 +2924,17 @@ function createCentralCoveredCourt() {
         return mesh;
     };
 
-    // Concrete apron and painted activity surface under the open pavilion.
-    addBox('coveredCourtFoundation', floorWidth + 1.4, 0.22, floorDepth + 1.4, 0, 0.11, 0, concreteMat);
-    addBox('coveredCourtFloor', floorWidth, 0.12, floorDepth, 0, 0.28, 0, concreteMat);
+    // Use the same warm room-floor material for the entire court base,
+    // including the visible apron around the playable area.
+    addBox('coveredCourtFoundation', floorWidth + 1.4, 0.22, floorDepth + 1.4, 0, 0.11, 0, roomFloorMat);
+    addBox('coveredCourtFloor', floorWidth, 0.12, floorDepth, 0, 0.28, 0, roomFloorMat);
     const activityWidth = floorWidth - 3.4;
     const activityDepth = floorDepth - 3.4;
     // Keep the concrete floor as the visible court surface; the extra gray
     // overlay layer was removed so it does not cover the court.
 
-    // Simple basketball/volleyball court markings scaled to the floor.
+    // Flat basketball-court markings scaled to the floor. These are decal-like
+    // meshes placed just above the surface, so the lines never form a bump.
     // Reserve a visible rear buffer for the stage so the playable court does
     // not run underneath the platform.
     const stageDepthForClearance = Math.min(11.2, floorDepth * 0.22);
@@ -2675,17 +2950,134 @@ function createCentralCoveredCourt() {
     // has more breathing room from the rear stage; the pavilion footprint
     // and all covered-court structures stay unchanged.
     const courtOffsetZ = -6.0;
-    const lineThickness = 0.10;
-    const lineY = 0.405;
-    addBox('coveredCourtLineCenter', courtWidth, 0.026, lineThickness, 0, lineY, courtOffsetZ, courtLineMat);
-    addBox('coveredCourtLineEndFront', courtWidth, 0.026, lineThickness, 0, lineY, courtOffsetZ - courtLength / 2, courtLineMat);
-    addBox('coveredCourtLineEndBack', courtWidth, 0.026, lineThickness, 0, lineY, courtOffsetZ + courtLength / 2, courtLineMat);
-    addBox('coveredCourtLineSideLeft', lineThickness, 0.026, courtLength, -courtWidth / 2, lineY, courtOffsetZ, courtLineMat);
-    addBox('coveredCourtLineSideRight', lineThickness, 0.026, courtLength, courtWidth / 2, lineY, courtOffsetZ, courtLineMat);
-    addTorus('coveredCourtCenterCircle', courtWidth * 0.16, 0.055, 0, lineY + 0.02, courtOffsetZ, courtLineMat);
+    const lineThickness = 0.09;
+    const courtSurfaceTopY = 0.34;
+    const lineY = courtSurfaceTopY + 0.003;
+    const addFlatCourtPolyline = (name, points) => {
+        const vertices = [];
+        const indices = [];
+        const halfThickness = lineThickness / 2;
+
+        for (let index = 0; index < points.length - 1; index += 1) {
+            const [startX, startZ] = points[index];
+            const [endX, endZ] = points[index + 1];
+            const dx = endX - startX;
+            const dz = endZ - startZ;
+            const length = Math.hypot(dx, dz);
+            if (length < 0.001) continue;
+
+            const normalX = (-dz / length) * halfThickness;
+            const normalZ = (dx / length) * halfThickness;
+            const vertexIndex = vertices.length / 3;
+            vertices.push(
+                startX + normalX, lineY, startZ + normalZ,
+                startX - normalX, lineY, startZ - normalZ,
+                endX - normalX, lineY, endZ - normalZ,
+                endX + normalX, lineY, endZ + normalZ
+            );
+            indices.push(
+                vertexIndex,
+                vertexIndex + 1,
+                vertexIndex + 2,
+                vertexIndex,
+                vertexIndex + 2,
+                vertexIndex + 3
+            );
+        }
+
+        if (vertices.length === 0) return null;
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        geometry.setIndex(indices);
+        geometry.computeVertexNormals();
+
+        const mesh = new THREE.Mesh(geometry, courtLineMat);
+        mesh.name = name;
+        mesh.renderOrder = 4;
+        mesh.userData.isCoveredCourtPart = true;
+        mesh.userData.isCourtMarking = true;
+        coveredCourt.add(mesh);
+        return mesh;
+    };
+    const addCourtSegment = (name, startX, startZ, endX, endZ) => (
+        addFlatCourtPolyline(name, [[startX, startZ], [endX, endZ]])
+    );
+    const addCourtArc = (name, centerX, centerZ, radius, startAngle, endAngle, segments = 32) => {
+        const points = [];
+        for (let index = 0; index <= segments; index += 1) {
+            const progress = index / segments;
+            const angle = startAngle + (endAngle - startAngle) * progress;
+            points.push([
+                centerX + Math.cos(angle) * radius,
+                centerZ + Math.sin(angle) * radius
+            ]);
+        }
+        return addFlatCourtPolyline(name, points);
+    };
+
+    const halfCourtWidth = courtWidth / 2;
+    const halfCourtLength = courtLength / 2;
+    const frontBaselineZ = courtOffsetZ - halfCourtLength;
+    const backBaselineZ = courtOffsetZ + halfCourtLength;
+    addCourtSegment('coveredCourtLineCenter', -halfCourtWidth, courtOffsetZ, halfCourtWidth, courtOffsetZ);
+    addCourtSegment('coveredCourtLineEndFront', -halfCourtWidth, frontBaselineZ, halfCourtWidth, frontBaselineZ);
+    addCourtSegment('coveredCourtLineEndBack', -halfCourtWidth, backBaselineZ, halfCourtWidth, backBaselineZ);
+    addCourtSegment('coveredCourtLineSideLeft', -halfCourtWidth, frontBaselineZ, -halfCourtWidth, backBaselineZ);
+    addCourtSegment('coveredCourtLineSideRight', halfCourtWidth, frontBaselineZ, halfCourtWidth, backBaselineZ);
+
+    const centerCircleRadius = Math.min(3.0, courtWidth * 0.12);
+    addCourtArc('coveredCourtCenterCircle', 0, courtOffsetZ, centerCircleRadius, 0, Math.PI * 2, 48);
+
+    const keyWidth = Math.min(8.4, courtWidth * 0.34);
+    const keyDepth = Math.min(9.6, courtLength * 0.22);
+    const freeThrowRadius = keyWidth / 2;
+    const restrictedRadius = Math.min(1.5, keyWidth * 0.18);
+    const basketOffsetFromBaseline = Math.min(4.2, courtLength * 0.10);
+    const threePointAngle = 20 * Math.PI / 180;
+    const threePointRadius = Math.min(13.3, courtWidth * 0.55);
+
     [-1, 1].forEach((side) => {
-        const keyZ = courtOffsetZ + side * (courtLength / 2 - 4.8);
-        addBox(`coveredCourtKey${side > 0 ? 'Back' : 'Front'}`, courtWidth * 0.52, 0.026, 9.6, 0, lineY, keyZ, courtLineMat);
+        const sideName = side > 0 ? 'Back' : 'Front';
+        const baselineZ = side > 0 ? backBaselineZ : frontBaselineZ;
+        const inward = side > 0 ? -1 : 1;
+        const freeThrowZ = baselineZ + inward * keyDepth;
+        const basketZ = baselineZ + inward * basketOffsetFromBaseline;
+        const arcStart = side > 0 ? Math.PI + threePointAngle : threePointAngle;
+        const arcEnd = side > 0 ? Math.PI * 2 - threePointAngle : Math.PI - threePointAngle;
+        const halfKeyWidth = keyWidth / 2;
+        const freeThrowArcStart = side > 0 ? Math.PI : 0;
+        const freeThrowArcEnd = side > 0 ? Math.PI * 2 : Math.PI;
+
+        addCourtSegment(`coveredCourtKey${sideName}Left`, -halfKeyWidth, baselineZ, -halfKeyWidth, freeThrowZ);
+        addCourtSegment(`coveredCourtKey${sideName}Right`, halfKeyWidth, baselineZ, halfKeyWidth, freeThrowZ);
+        addCourtSegment(`coveredCourtFreeThrowLine${sideName}`, -halfKeyWidth, freeThrowZ, halfKeyWidth, freeThrowZ);
+        addCourtArc(
+            `coveredCourtFreeThrowArc${sideName}`,
+            0,
+            freeThrowZ,
+            freeThrowRadius,
+            freeThrowArcStart,
+            freeThrowArcEnd,
+            24
+        );
+        addCourtArc(
+            `coveredCourtRestrictedArc${sideName}`,
+            0,
+            basketZ,
+            restrictedRadius,
+            freeThrowArcStart,
+            freeThrowArcEnd,
+            16
+        );
+        addCourtArc(
+            `coveredCourtThreePointArc${sideName}`,
+            0,
+            basketZ,
+            threePointRadius,
+            arcStart,
+            arcEnd,
+            36
+        );
     });
 
     // Mobile basketball goals follow the reference: clear backboards with
@@ -2838,6 +3230,99 @@ function createCentralCoveredCourt() {
         addCoveredCourtColumn(`coveredCourtColumnRight${index + 1}`, columnSideX, z);
     });
 
+    // Two separate dome cameras per pavilion corner. Each unit gets its own
+    // short tubular bracket from the corner column so neither camera floats
+    // or shares the same mounting point.
+    const courtCctvArmY = columnY + columnHeight / 2 - 0.08;
+    const courtCctvDropHeight = 0.20;
+    const courtCctvInset = 0.90;
+    const courtCctvTargetY = 2.60;
+    const addCoveredCourtCctv = (
+        name,
+        columnX,
+        columnZ,
+        cameraX,
+        cameraZ,
+        targetX,
+        targetZ
+    ) => {
+        const armStart = new THREE.Vector3(columnX, courtCctvArmY, columnZ);
+        const armEnd = new THREE.Vector3(cameraX, courtCctvArmY, cameraZ);
+        const armDirection = new THREE.Vector3().subVectors(armEnd, armStart);
+        const armLength = armDirection.length();
+        if (armLength < 0.001) return;
+
+        const arm = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.055, 0.055, armLength, 14),
+            fenceCctvPoleMat
+        );
+        arm.position.copy(armStart).add(armEnd).multiplyScalar(0.5);
+        arm.quaternion.setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            armDirection.normalize()
+        );
+        arm.name = `${name}MountArm`;
+        arm.castShadow = true;
+        arm.receiveShadow = true;
+        arm.userData.isCoveredCourtPart = true;
+        arm.userData.isSecurityDevice = true;
+        arm.userData.isCctvMount = true;
+
+        const drop = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.045, 0.045, courtCctvDropHeight, 14),
+            fenceCctvPoleMat
+        );
+        drop.position.set(
+            cameraX,
+            courtCctvArmY - courtCctvDropHeight / 2,
+            cameraZ
+        );
+        drop.name = `${name}MountDrop`;
+        drop.castShadow = true;
+        drop.receiveShadow = true;
+        drop.userData.isCoveredCourtPart = true;
+        drop.userData.isSecurityDevice = true;
+        drop.userData.isCctvMount = true;
+        coveredCourt.add(arm, drop);
+
+        const cameraGroup = addFencePtzDomeCctv(
+            new THREE.Vector3(cameraX, courtCctvArmY - courtCctvDropHeight, cameraZ),
+            new THREE.Vector3(targetX, courtCctvTargetY, targetZ),
+            name,
+            coveredCourt
+        );
+        cameraGroup.userData.isCoveredCourtPart = true;
+        cameraGroup.userData.isCoveredCourtCctv = true;
+    };
+
+    [
+        ['FrontLeft', -1, -1],
+        ['FrontRight', 1, -1],
+        ['BackLeft', -1, 1],
+        ['BackRight', 1, 1]
+    ].forEach(([cornerName, sideX, sideZ]) => {
+        const cornerX = sideX * columnSideX;
+        const cornerZ = sideZ * columnFrontBackZ;
+        addCoveredCourtCctv(
+            `coveredCourtCCTV${cornerName}A`,
+            cornerX,
+            cornerZ,
+            cornerX - sideX * courtCctvInset,
+            cornerZ,
+            0,
+            0
+        );
+        addCoveredCourtCctv(
+            `coveredCourtCCTV${cornerName}B`,
+            cornerX,
+            cornerZ,
+            cornerX,
+            cornerZ - sideZ * courtCctvInset,
+            0,
+            0
+        );
+    });
+
     // Matching rear stage rooms flank the platform for storage, dressing, or
     // program support while keeping a small gap between each room and stage.
     const serviceWidth = Math.min(6.2, floorWidth * 0.15);
@@ -2847,9 +3332,9 @@ function createCentralCoveredCourt() {
     const serviceX = floorWidth / 2 - serviceWidth / 2 - 0.5;
     const serviceZ = floorDepth / 2 - serviceDepth / 2 - 0.85;
     addBox('coveredCourtSupportBlock', serviceWidth, serviceHeight, serviceDepth, serviceX, serviceHeight / 2 + 0.42, serviceZ, serviceMat);
-    addBox('coveredCourtSupportRoof', serviceWidth + 0.35, 0.18, serviceDepth + 0.35, serviceX, serviceHeight + 0.56, serviceZ, roofTrimMat);
+    addBox('coveredCourtSupportRoof', serviceWidth + 0.35, 0.18, serviceDepth + 0.35, serviceX, serviceHeight + 0.56, serviceZ, serviceMat);
     addBox('coveredCourtStageRoomLeft', serviceWidth, serviceHeight, serviceDepth, -serviceX, serviceHeight / 2 + 0.42, serviceZ, serviceMat);
-    addBox('coveredCourtStageRoomLeftRoof', serviceWidth + 0.35, 0.18, serviceDepth + 0.35, -serviceX, serviceHeight + 0.56, serviceZ, roofTrimMat);
+    addBox('coveredCourtStageRoomLeftRoof', serviceWidth + 0.35, 0.18, serviceDepth + 0.35, -serviceX, serviceHeight + 0.56, serviceZ, serviceMat);
 
     // Raised stage at the rear/top end of the court, facing the activity
     // floor. Its width is fitted between the two matching side rooms.
@@ -2870,22 +3355,22 @@ function createCentralCoveredCourt() {
     addBox('coveredCourtStageBase', stageWidth, stageHeight, stageDepth, stageCenterX, 0.34 + stageHeight / 2, stageZ, stageDeckMat, stageGroup);
     addBox('coveredCourtStageDeck', stageWidth - 0.42, 0.08, stageDepth - 0.42, stageCenterX, 0.34 + stageHeight + 0.04, stageZ, stageAccentMat, stageGroup);
     addBox('coveredCourtStageBackdrop', stageWidth, 3.7, 0.24, stageCenterX, 0.34 + stageHeight + 1.85, stageZ + stageDepth / 2 - 0.14, stageBackdropMat, stageGroup);
-    addBox('coveredCourtStageBackdropBand', stageWidth - 0.8, 0.45, 0.12, stageCenterX, 3.65, stageZ + stageDepth / 2 - 0.28, roofTrimMat, stageGroup);
+    addBox('coveredCourtStageBackdropBand', stageWidth - 0.8, 0.45, 0.12, stageCenterX, 3.65, stageZ + stageDepth / 2 - 0.28, stageTrimMat, stageGroup);
     const stageTrimY = 0.34 + stageHeight + 1.88;
     const stageTrimZ = stageZ + stageDepth / 2 - 0.30;
     const stageTrimHeight = 3.75;
     const stageTrimLeftX = stageLeftX + 0.18;
     const stageTrimRightX = stageRightX - 0.18;
-    addBox('coveredCourtStageLeftTrim', 0.34, stageTrimHeight, 0.36, stageTrimLeftX, stageTrimY, stageTrimZ, columnMat, stageGroup);
-    addBox('coveredCourtStageRightTrim', 0.34, stageTrimHeight, 0.36, stageTrimRightX, stageTrimY, stageTrimZ, columnMat, stageGroup);
+    addBox('coveredCourtStageLeftTrim', 0.34, stageTrimHeight, 0.36, stageTrimLeftX, stageTrimY, stageTrimZ, stageTrimMat, stageGroup);
+    addBox('coveredCourtStageRightTrim', 0.34, stageTrimHeight, 0.36, stageTrimRightX, stageTrimY, stageTrimZ, stageTrimMat, stageGroup);
     [
         ['Left', stageTrimLeftX],
         ['Right', stageTrimRightX]
     ].forEach(([sideName, trimX]) => {
-        addBox(`coveredCourtStage${sideName}TrimBase`, 0.50, 0.16, 0.50, trimX, 0.80, stageTrimZ, columnMat, stageGroup);
-        addBox(`coveredCourtStage${sideName}TrimCap`, 0.46, 0.12, 0.46, trimX, stageTrimY + stageTrimHeight / 2 + 0.06, stageTrimZ, columnMat, stageGroup);
+        addBox(`coveredCourtStage${sideName}TrimBase`, 0.50, 0.16, 0.50, trimX, 0.80, stageTrimZ, stageTrimMat, stageGroup);
+        addBox(`coveredCourtStage${sideName}TrimCap`, 0.46, 0.12, 0.46, trimX, stageTrimY + stageTrimHeight / 2 + 0.06, stageTrimZ, stageTrimMat, stageGroup);
     });
-    addBox('coveredCourtStageFrontFascia', stageWidth, 0.62, 0.20, stageCenterX, 0.34 + stageHeight / 2, stageFrontZ - 0.08, roofTrimMat, stageGroup);
+    addBox('coveredCourtStageFrontFascia', stageWidth, 0.62, 0.20, stageCenterX, 0.34 + stageHeight / 2, stageFrontZ - 0.08, stageTrimMat, stageGroup);
 
     // Preserve the earlier side-room positions, but build proper stair
     // flights instead of two floating slabs.
@@ -2930,8 +3415,8 @@ function createCentralCoveredCourt() {
     });
     coveredCourt.add(stageGroup);
 
-    // Light concrete clearance strip between the court end line and the
-    // stage steps makes the separation readable from above and in perspective.
+    // Keep the clearance strip on the same floor color as the rest of the
+    // covered court so no gray patch remains near the stage.
     const stageClearanceStartZ = courtOffsetZ + courtLength / 2 + 0.35;
     const stageClearanceEndZ = stageFrontZ - 0.35;
     const stageClearanceDepth = stageClearanceEndZ - stageClearanceStartZ;
@@ -2944,7 +3429,7 @@ function createCentralCoveredCourt() {
             stageCenterX,
             0.42,
             (stageClearanceStartZ + stageClearanceEndZ) / 2,
-            concreteMat
+            roomFloorMat
         );
     }
 
@@ -3230,6 +3715,29 @@ function getCampusFenceLayout() {
     };
 }
 
+function setInitialCampusView() {
+    if (!editCamera || !orbitControls) return;
+
+    const layout = getCampusFenceLayout();
+    if (!layout) return;
+
+    const campusCenterX = (layout.minX + layout.maxX) / 2;
+    const campusCenterZ = (layout.minZ + layout.maxZ) / 2;
+    const campusWidth = layout.maxX - layout.minX;
+    const campusDepth = layout.maxZ - layout.minZ;
+    const frontDistance = Math.max(48, campusWidth * 0.44, campusDepth * 0.34);
+
+    // Spawn centered outside the front fence and look straight through the
+    // entrance so every reload starts from the same front-facing view.
+    editCamera.position.set(
+        campusCenterX,
+        Math.max(10, Math.min(14, frontDistance * 0.09)),
+        layout.minZ - frontDistance
+    );
+    orbitControls.target.set(campusCenterX, 4.6, campusCenterZ);
+    orbitControls.update();
+}
+
 function createCampusPerimeterFence() {
     if (scene.getObjectByName('campusPerimeterFence')) return;
 
@@ -3281,13 +3789,13 @@ function createCampusPerimeterFence() {
 
     const fenceMat = new THREE.MeshStandardMaterial({
         color: 0x9dc359,
-        roughness: 0.65,
-        metalness: 0.15
+        roughness: 0.48,
+        metalness: 0.28
     });
     const fenceWallMat = new THREE.MeshStandardMaterial({
         color: 0xeedcb0,
-        roughness: 0.92,
-        metalness: 0.02
+        roughness: 0.78,
+        metalness: 0.01
     });
     const fencePostMat = new THREE.MeshStandardMaterial({
         color: 0xf5df9d,
@@ -3771,8 +4279,9 @@ function createCampusPerimeterFence() {
     addDoubleGate('Left', leftGateStartX, 1);
     addDoubleGate('Right', rightGateEndX, -1);
 
+    const fencePostSpacing = 10.0;
     const addFencePostLine = (name, orientation, start, end, fixed) => {
-        distributeFence(start, end, 10.0).forEach((position, index) => {
+        distributeFence(start, end, fencePostSpacing).forEach((position, index) => {
             addFencePost(
                 `${name}${index + 1}`,
                 orientation === 'x' ? position : fixed,
@@ -3787,6 +4296,203 @@ function createCampusPerimeterFence() {
     addFencePostLine('campusFenceFrontOuterLeftPost', 'x', minX, leftGateStartX, minZ);
     addFencePostLine('campusFenceFrontCenterPost', 'x', leftGateEndX, rightGateStartX, minZ);
     addFencePostLine('campusFenceFrontOuterRightPost', 'x', rightGateEndX, maxX, minZ);
+
+    // Reserve two separated posts around the midpoint for the paired cameras
+    // on the two side runs and the back run. The post-key guard keeps these
+    // from duplicating an existing evenly distributed fence post.
+    const sideCenterZ = (minZ + maxZ) / 2;
+    const backCenterX = (minX + maxX) / 2;
+    const sideCameraPairOffset = Math.min(17.0, Math.max(9.0, (maxZ - minZ) * 0.17));
+    const backCameraPairOffset = Math.min(17.0, Math.max(9.0, (maxX - minX) * 0.17));
+    const nearestNextFencePost = (positions, desiredPosition, direction) => {
+        let nearestIndex = 0;
+        let nearestDistance = Infinity;
+        positions.forEach((position, index) => {
+            const distance = Math.abs(position - desiredPosition);
+            if (distance < nearestDistance) {
+                nearestDistance = distance;
+                nearestIndex = index;
+            }
+        });
+
+        return positions[
+            THREE.MathUtils.clamp(nearestIndex + direction, 0, positions.length - 1)
+        ];
+    };
+    const sideFencePosts = distributeFence(minZ, maxZ, fencePostSpacing);
+    const backFencePosts = distributeFence(minX, maxX, fencePostSpacing);
+    // Move each camera to the next real post away from the center position.
+    const sideCameraFrontZ = nearestNextFencePost(
+        sideFencePosts,
+        sideCenterZ - sideCameraPairOffset,
+        -1
+    );
+    const sideCameraBackZ = nearestNextFencePost(
+        sideFencePosts,
+        sideCenterZ + sideCameraPairOffset,
+        1
+    );
+    const backCameraLeftX = nearestNextFencePost(
+        backFencePosts,
+        backCenterX - backCameraPairOffset,
+        -1
+    );
+    const backCameraRightX = nearestNextFencePost(
+        backFencePosts,
+        backCenterX + backCameraPairOffset,
+        1
+    );
+
+    addFencePost('campusFenceLeftSecurityFrontPost', minX, sideCameraFrontZ);
+    addFencePost('campusFenceLeftSecurityBackPost', minX, sideCameraBackZ);
+    addFencePost('campusFenceRightSecurityFrontPost', maxX, sideCameraFrontZ);
+    addFencePost('campusFenceRightSecurityBackPost', maxX, sideCameraBackZ);
+    addFencePost('campusFenceBackSecurityLeftPost', backCameraLeftX, maxZ);
+    addFencePost('campusFenceBackSecurityRightPost', backCameraRightX, maxZ);
+
+    // Use dedicated silver tubular steel poles mounted on the fence-post
+    // centerlines.  They start above the concrete post caps and extend high
+    // enough to keep the camera view clear without looking detached.
+    const fenceCctvPoleBaseY = fenceBaseY + fenceHeight + 0.30;
+    const fenceCctvPoleHeight = 2.20;
+    const fenceCctvMountY = fenceCctvPoleBaseY + fenceCctvPoleHeight;
+    const fenceCctvTargetY = fenceBaseY + 2.20;
+    const addFenceCctv = (
+        name,
+        poleX,
+        poleZ,
+        targetX,
+        targetZ,
+        { includePole = true, mountYOffset = 0 } = {}
+    ) => {
+        if (includePole) {
+            const pole = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.10, 0.10, fenceCctvPoleHeight, 16),
+                fenceCctvPoleMat
+            );
+            pole.position.set(poleX, fenceCctvPoleBaseY + fenceCctvPoleHeight / 2, poleZ);
+            pole.name = `${name}Pole`;
+            pole.castShadow = true;
+            pole.receiveShadow = true;
+            pole.userData.isCampusFencePart = true;
+            pole.userData.isSecurityDevice = true;
+            pole.userData.isCctvMount = true;
+
+            const poleBase = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.18, 0.22, 0.08, 16),
+                fenceCctvPoleMat
+            );
+            poleBase.position.set(poleX, fenceCctvPoleBaseY - 0.04, poleZ);
+            poleBase.name = `${name}PoleBase`;
+            poleBase.castShadow = true;
+            poleBase.receiveShadow = true;
+            poleBase.userData.isCampusFencePart = true;
+            poleBase.userData.isSecurityDevice = true;
+            poleBase.userData.isCctvMount = true;
+
+            fenceGroup.add(pole, poleBase);
+        }
+
+        const armDirection = new THREE.Vector3(targetX - poleX, 0, targetZ - poleZ);
+        if (armDirection.lengthSq() === 0) armDirection.set(1, 0, 0);
+        armDirection.normalize();
+        const armY = fenceCctvMountY + mountYOffset - 0.08;
+        const armLength = 0.80;
+        const armStart = new THREE.Vector3(poleX, armY, poleZ);
+        const armEnd = armStart.clone().addScaledVector(armDirection, armLength);
+        const arm = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.065, 0.065, armLength, 16),
+            fenceCctvPoleMat
+        );
+        arm.position.lerpVectors(armStart, armEnd, 0.5);
+        arm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), armDirection);
+        arm.name = `${name}Arm`;
+        arm.castShadow = true;
+        arm.receiveShadow = true;
+        arm.userData.isCampusFencePart = true;
+        arm.userData.isSecurityDevice = true;
+        arm.userData.isCctvMount = true;
+
+        const dropHeight = 0.20;
+        const drop = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.05, 0.05, dropHeight, 16),
+            fenceCctvPoleMat
+        );
+        drop.position.set(armEnd.x, armY - dropHeight / 2, armEnd.z);
+        drop.name = `${name}ArmDrop`;
+        drop.castShadow = true;
+        drop.receiveShadow = true;
+        drop.userData.isCampusFencePart = true;
+        drop.userData.isSecurityDevice = true;
+        drop.userData.isCctvMount = true;
+
+        fenceGroup.add(arm, drop);
+
+        const cameraGroup = addFencePtzDomeCctv(
+            new THREE.Vector3(armEnd.x, armY - dropHeight, armEnd.z),
+            new THREE.Vector3(targetX, fenceCctvTargetY, targetZ),
+            name,
+            fenceGroup
+        );
+        cameraGroup.userData.isCampusFenceCctv = true;
+    };
+
+    // Keep the pair at each corner on perpendicular sight lines.  This gives
+    // the two domes enough separation to read as two clean, level cameras.
+    const cornerViewReach = 7.0;
+    [
+        ['campusFenceCCTVFrontLeft', minX, minZ, minX, minZ - cornerViewReach, minX - cornerViewReach, minZ],
+        ['campusFenceCCTVFrontRight', maxX, minZ, maxX, minZ - cornerViewReach, maxX + cornerViewReach, minZ],
+        ['campusFenceCCTVBackLeft', minX, maxZ, minX, maxZ + cornerViewReach, minX - cornerViewReach, maxZ],
+        ['campusFenceCCTVBackRight', maxX, maxZ, maxX, maxZ + cornerViewReach, maxX + cornerViewReach, maxZ]
+    ].forEach(([name, x, z, targetX, targetZ, sideTargetX, sideTargetZ]) => {
+        addFenceCctv(name, x, z, targetX, targetZ);
+        addFenceCctv(
+            `${name}Side`,
+            x,
+            z,
+            sideTargetX,
+            sideTargetZ,
+            { includePole: false }
+        );
+    });
+
+    const leftGateCenterX = (leftGateStartX + leftGateEndX) / 2;
+    const rightGateCenterX = (rightGateStartX + rightGateEndX) / 2;
+    [
+        ['campusFenceCCTVLeftGateStart', leftGateStartX, minZ, leftGateCenterX, minZ - 6.0],
+        ['campusFenceCCTVLeftGateEnd', leftGateEndX, minZ, leftGateCenterX, minZ - 6.0],
+        ['campusFenceCCTVRightGateStart', rightGateStartX, minZ, rightGateCenterX, minZ - 6.0],
+        ['campusFenceCCTVRightGateEnd', rightGateEndX, minZ, rightGateCenterX, minZ - 6.0]
+    ].forEach(([name, x, z, targetX, targetZ]) => {
+        addFenceCctv(name, x, z, targetX, targetZ);
+    });
+
+    // Two separated cameras on each remaining perimeter run. Each camera has
+    // its own pole and its horizontal arm projects to the outside face of
+    // that fence, keeping the hardware visibly outside the campus.
+    const midpointCctvReach = 9.0;
+    [
+        ['campusFenceCCTVLeftFront', minX, sideCameraFrontZ, minX - midpointCctvReach, sideCameraFrontZ],
+        ['campusFenceCCTVLeftBack', minX, sideCameraBackZ, minX - midpointCctvReach, sideCameraBackZ],
+        ['campusFenceCCTVRightFront', maxX, sideCameraFrontZ, maxX + midpointCctvReach, sideCameraFrontZ],
+        ['campusFenceCCTVRightBack', maxX, sideCameraBackZ, maxX + midpointCctvReach, sideCameraBackZ],
+        ['campusFenceCCTVBackLeft', backCameraLeftX, maxZ, backCameraLeftX, maxZ + midpointCctvReach],
+        ['campusFenceCCTVBackRight', backCameraRightX, maxZ, backCameraRightX, maxZ + midpointCctvReach]
+    ].forEach(([name, x, z, targetX, targetZ]) => {
+        addFenceCctv(name, x, z, targetX, targetZ);
+    });
+
+    // Add one more front-facing unit at the center section of the fence,
+    // between the two gate openings, so the pole does not block an entrance.
+    const frontCenterFenceX = (leftGateEndX + rightGateStartX) / 2;
+    addFenceCctv(
+        'campusFenceCCTVFrontCenter',
+        frontCenterFenceX,
+        minZ,
+        frontCenterFenceX,
+        minZ - 6.0
+    );
 
     scene.add(fenceGroup);
     addUniqueRegistryItem(objects, fenceGroup);
@@ -5059,7 +5765,7 @@ function buildClassroom() {
     corridorTopRail.castShadow = true;
     scene.add(corridorTopRail);
 
-    const greenTubeMat = new THREE.MeshStandardMaterial({ color: 0x9dc359, roughness: 0.65, metalness: 0.15 });
+    const greenTubeMat = new THREE.MeshStandardMaterial({ color: 0x9dc359, roughness: 0.48, metalness: 0.28 });
     const terraceGreenTube = new THREE.Mesh(
         new THREE.CylinderGeometry(0.06, 0.06, CLASS_LENGTH, 16),
         greenTubeMat
@@ -5127,38 +5833,6 @@ function buildClassroom() {
     const pathWidth = CLASS_WIDTH + 200;
     const pathLength = CLASS_LENGTH + 200;
     const pathGeo = new THREE.PlaneGeometry(pathWidth, pathLength);
-
-    function createGravelTexture() {
-        const canvas = document.createElement('canvas');
-        canvas.width = 128;
-        canvas.height = 128;
-        const ctx = canvas.getContext('2d');
-
-        ctx.fillStyle = '#6e706f'; // Base gray
-        ctx.fillRect(0, 0, 128, 128);
-
-        // Add random dots (gravel stones)
-        for (let i = 0; i < 3000; i++) {
-            const x = Math.random() * 128;
-            const y = Math.random() * 128;
-            const size = Math.random() * 2 + 0.5;
-            // Mix of light gray, dark gray, and brownish gray stones
-            const colors = ['#8c8e8d', '#4a4d4c', '#7d7a71', '#9ca09e'];
-            ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
-            ctx.beginPath();
-            ctx.arc(x, y, size, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.wrapS = THREE.RepeatWrapping;
-        texture.wrapT = THREE.RepeatWrapping;
-        texture.repeat.set(30, 30); // Tile it across the large yard
-        texture.colorSpace = THREE.SRGBColorSpace;
-        return texture;
-    }
-
-    const gravelTex = createGravelTexture();
 
     const groundMat = new THREE.MeshStandardMaterial({
         color: 0x707070,
@@ -5343,7 +6017,7 @@ function buildClassroom() {
     pedimentShape.lineTo(-gableHalfSpan, 0);
 
     // We haven't defined wallMat yet, so we define it here, and remove it from below
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0xeedcb0, roughness: 0.8 });
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0xeedcb0, roughness: 0.74, metalness: 0.01 });
 
     // Small attached rooms at both ends, each one-third of a classroom length.
     const endRoomLength = SINGLE_ROOM_LENGTH / 3;
@@ -5480,6 +6154,38 @@ function buildClassroom() {
         scene.add(endRoomUpperPost);
         addedRoomBeams.push(endRoomUpperPost);
 
+        // Put one camera at the outermost corner of each attached add-room
+        // corridor. Keep it just inside the corner post so the stem remains
+        // connected to the real upper beam without intersecting the post.
+        const addRoomCctvX = corridorOuterX - 0.12;
+        const addRoomCctvY = CLASS_HEIGHT - 0.52;
+        const addRoomCctvTargetY = CLASS_HEIGHT * 0.52;
+        const addRoomCctvZ = z + Math.sign(z) * (endRoomLength / 2 - 0.35);
+        const addRoomCctvName = `addRoomCorridorCCTV${z > 0 ? 'Positive' : 'Negative'}`;
+        const addRoomCctvTargetZ = addRoomCctvZ - Math.sign(z) * (endRoomLength * 0.42);
+        const mountingStem = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.045, 0.045, 0.14, 12),
+            fenceCctvPoleMat
+        );
+        mountingStem.position.set(addRoomCctvX, addRoomCctvY + 0.07, addRoomCctvZ);
+        mountingStem.name = `${addRoomCctvName}MountStem`;
+        mountingStem.castShadow = true;
+        mountingStem.receiveShadow = true;
+        mountingStem.userData.isHallwayCctv = true;
+        mountingStem.userData.isAddRoomCctv = true;
+        mountingStem.userData.isSecurityDevice = true;
+        mountingStem.userData.isCctvMount = true;
+        scene.add(mountingStem);
+
+        const cameraGroup = addFencePtzDomeCctv(
+            new THREE.Vector3(addRoomCctvX, addRoomCctvY, addRoomCctvZ),
+            new THREE.Vector3(addRoomCctvX, addRoomCctvTargetY, addRoomCctvTargetZ),
+            addRoomCctvName
+        );
+        cameraGroup.userData.isHallwayCctv = true;
+        cameraGroup.userData.isAddRoomCctv = true;
+        cameraGroup.userData.isBuildingSecurityDevice = true;
+
         [0.25, 0.5, 0.75].forEach((ratio) => {
             const endGreenUpright = new THREE.Mesh(
                 new THREE.CylinderGeometry(0.07, 0.07, 0.42, 16),
@@ -5531,8 +6237,8 @@ function buildClassroom() {
         scene.add(endSideGreenUpright);
     });
 
-    const glassMat = new THREE.MeshStandardMaterial({ color: 0xa8d9b8, transparent: true, opacity: 0.6, roughness: 0.1, metalness: 0.8 });
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x4e8771 });
+    const glassMat = new THREE.MeshStandardMaterial({ color: 0xa8d9b8, transparent: true, opacity: 0.6, roughness: 0.18, metalness: 0.35 });
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x4e8771, roughness: 0.34, metalness: 0.45 });
     const doorMeshMat = new THREE.MeshStandardMaterial({ color: 0x9dc359 });
 
     const pedimentMat = new THREE.MeshStandardMaterial({ color: 0xeedcb0, roughness: 0.8, side: THREE.DoubleSide });
@@ -6413,6 +7119,14 @@ function setWindowsVisibility(visible) {
     });
 }
 
+function setCctvVisibility(visible) {
+    scene.traverse((object) => {
+        if (object.userData?.isCctv || object.userData?.isCctvMount) {
+            object.visible = visible;
+        }
+    });
+}
+
 function applyRollupShutterState(shutter, isDown) {
     const curtain = shutter.children.find((child) => child.userData?.type === 'rollupCurtain');
     if (!curtain) return;
@@ -6462,12 +7176,14 @@ function applyComponentVisibilityToggles() {
     const blackboardsToggle = document.getElementById('chk-toggle-blackboards');
     const doorsToggle = document.getElementById('chk-toggle-doors');
     const windowsToggle = document.getElementById('chk-toggle-windows');
+    const cctvToggle = document.getElementById('chk-toggle-cctv');
     const rollupShuttersToggle = document.getElementById('chk-toggle-rollup-shutters');
     if (rollupShuttersToggle) rollupShuttersToggle.checked = false;
     setChairsVisibility(chairsToggle ? chairsToggle.checked : false);
     setBlackboardsVisibility(blackboardsToggle ? blackboardsToggle.checked : true);
     setDoorsVisibility(doorsToggle ? doorsToggle.checked : true);
     setWindowsVisibility(windowsToggle ? windowsToggle.checked : true);
+    setCctvVisibility(cctvToggle ? cctvToggle.checked : true);
     setRollupShutterState(rollupShuttersToggle ? rollupShuttersToggle.checked : true);
 }
 
@@ -6495,7 +7211,61 @@ function applyBuildingVisibilityToggles() {
     });
 }
 
+function setupControlSections() {
+    document.querySelectorAll('.control-section').forEach((section) => {
+        const toggle = section.querySelector('.section-toggle');
+        if (!toggle) return;
+        toggle.addEventListener('click', () => {
+            const collapsed = section.classList.toggle('is-collapsed');
+            toggle.setAttribute('aria-expanded', String(!collapsed));
+        });
+    });
+}
+
+function setupControlSearch() {
+    const input = document.getElementById('control-search');
+    const clearButton = document.getElementById('btn-clear-control-search');
+    const noResults = document.getElementById('control-no-results');
+    const sections = [...document.querySelectorAll('.control-section')];
+    if (!input || !clearButton || !noResults) return;
+
+    const filterControls = () => {
+        const query = input.value.trim().toLowerCase();
+        let visibleCount = 0;
+
+        sections.forEach((section) => {
+            const cards = [...section.querySelectorAll('.control-card')];
+            let sectionMatches = 0;
+            cards.forEach((card) => {
+                const matches = !query || card.textContent.toLowerCase().includes(query);
+                card.hidden = !matches;
+                if (matches) sectionMatches += 1;
+            });
+
+            visibleCount += sectionMatches;
+            section.classList.toggle('is-filtered-out', sectionMatches === 0);
+            if (query && sectionMatches > 0) {
+                section.classList.remove('is-collapsed');
+                section.querySelector('.section-toggle')?.setAttribute('aria-expanded', 'true');
+            }
+        });
+
+        clearButton.classList.toggle('is-visible', query.length > 0);
+        noResults.hidden = visibleCount > 0;
+    };
+
+    input.addEventListener('input', filterControls);
+    clearButton.addEventListener('click', () => {
+        input.value = '';
+        input.focus();
+        filterControls();
+    });
+}
+
 function setupUI() {
+    setupControlSections();
+    setupControlSearch();
+
     // Mode Buttons
     document.getElementById('btn-edit-mode').addEventListener('click', () => setMode('EDIT'));
     document.getElementById('btn-view-mode').addEventListener('click', () => setMode('VIEW'));
@@ -6544,6 +7314,14 @@ function setupUI() {
     if (chkToggleWindows) {
         chkToggleWindows.addEventListener('change', (e) => {
             setWindowsVisibility(e.target.checked);
+        });
+    }
+
+    // CCTV Toggle
+    const chkToggleCctv = document.getElementById('chk-toggle-cctv');
+    if (chkToggleCctv) {
+        chkToggleCctv.addEventListener('change', (e) => {
+            setCctvVisibility(e.target.checked);
         });
     }
 
@@ -6601,6 +7379,10 @@ function setMode(mode) {
     moveBackward = false;
     moveLeft = false;
     moveRight = false;
+    rotateUp = false;
+    rotateDown = false;
+    rotateLeft = false;
+    rotateRight = false;
 
     if (mode === 'EDIT') {
         btnEdit.classList.add('active');
@@ -6618,7 +7400,7 @@ function setMode(mode) {
         }
 
         // Re-enable editing tools
-        document.getElementById('left-sidebar').style.display = 'block';
+        document.getElementById('left-sidebar').style.display = 'flex';
         document.getElementById('right-sidebar').style.display = 'block';
 
     } else if (mode === 'VIEW') {
@@ -6689,6 +7471,10 @@ function onKeyDown(event) {
             case 'KeyA': moveLeft = true; break;
             case 'KeyS': moveBackward = true; break;
             case 'KeyD': moveRight = true; break;
+            case 'ArrowUp': rotateUp = true; event.preventDefault(); break;
+            case 'ArrowDown': rotateDown = true; event.preventDefault(); break;
+            case 'ArrowLeft': rotateLeft = true; event.preventDefault(); break;
+            case 'ArrowRight': rotateRight = true; event.preventDefault(); break;
         }
     }
 }
@@ -6700,6 +7486,10 @@ function onKeyUp(event) {
             case 'KeyA': moveLeft = false; break;
             case 'KeyS': moveBackward = false; break;
             case 'KeyD': moveRight = false; break;
+            case 'ArrowUp': rotateUp = false; event.preventDefault(); break;
+            case 'ArrowDown': rotateDown = false; event.preventDefault(); break;
+            case 'ArrowLeft': rotateLeft = false; event.preventDefault(); break;
+            case 'ArrowRight': rotateRight = false; event.preventDefault(); break;
         }
     }
 }
@@ -6710,9 +7500,12 @@ function animate() {
     const time = performance.now();
     const delta = (time - prevTime) / 1000;
 
+    orbitControls.update();
+
     if (currentMode === 'EDIT' && selectedObject) updatePropertiesPanel();
 
     if (currentMode === 'VIEW') {
+        let viewCameraChanged = false;
         const viewDirection = new THREE.Vector3();
         editCamera.getWorldDirection(viewDirection);
         viewDirection.y = 0;
@@ -6722,9 +7515,49 @@ function animate() {
         viewMove.addScaledVector(viewDirection, Number(moveForward) - Number(moveBackward));
         viewMove.addScaledVector(viewRight, Number(moveRight) - Number(moveLeft));
         if (viewMove.lengthSq() > 0) {
-            viewMove.normalize().multiplyScalar(10.0 * delta);
+            viewMove.normalize().multiplyScalar(25.0 * delta);
             editCamera.position.add(viewMove);
             orbitControls.target.add(viewMove);
+            viewCameraChanged = true;
+        }
+
+        const horizontalRotation = Number(rotateLeft) - Number(rotateRight);
+        const verticalRotation = Number(rotateUp) - Number(rotateDown);
+        if (horizontalRotation !== 0 || verticalRotation !== 0) {
+            const lookOffset = new THREE.Vector3().subVectors(orbitControls.target, editCamera.position);
+            const lookDistance = lookOffset.length();
+
+            if (lookDistance > 0) {
+                const rotationStep = VIEW_ROTATION_SPEED * delta;
+
+                if (horizontalRotation !== 0) {
+                    lookOffset.applyAxisAngle(
+                        editCamera.up,
+                        horizontalRotation * rotationStep
+                    );
+                }
+
+                if (verticalRotation !== 0) {
+                    const horizontalDistance = Math.hypot(lookOffset.x, lookOffset.z);
+                    const currentPitch = Math.atan2(lookOffset.y, horizontalDistance);
+                    const nextPitch = THREE.MathUtils.clamp(
+                        currentPitch + verticalRotation * rotationStep,
+                        -MAX_VIEW_PITCH,
+                        MAX_VIEW_PITCH
+                    );
+                    const pitchAxis = new THREE.Vector3()
+                        .crossVectors(lookOffset, editCamera.up)
+                        .normalize();
+
+                    lookOffset.applyAxisAngle(pitchAxis, nextPitch - currentPitch);
+                }
+
+                orbitControls.target.copy(editCamera.position).add(lookOffset);
+                viewCameraChanged = true;
+            }
+        }
+
+        if (viewCameraChanged) {
             orbitControls.update();
         }
     }
