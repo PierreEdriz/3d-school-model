@@ -4,8 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>School Security 3D Model</title>
-    <script type="module" crossorigin src="/3d-school-model/assets/index-DBy5yiyi.js"></script>
-    <link rel="stylesheet" crossorigin href="/3d-school-model/assets/index-C1DZOWvk.css">
+    <script type="module" crossorigin src="/3d-school-model/assets/index-CoVE_6hl.js"></script>
+    <link rel="stylesheet" crossorigin href="/3d-school-model/assets/index-43oIjuQC.css">
   </head>
   <body>
     <!-- UI Layer -->
@@ -13,74 +13,112 @@
       
       <!-- Top Toolbar -->
       <div id="top-toolbar">
-        <div class="brand">School Security 3D Model</div>
-        <div class="modes">
-          <button id="btn-edit-mode" class="active">EDIT MODE</button>
-          <button id="btn-view-mode">VIEW MODE</button>
+        <div class="brand-block">
+          <div class="brand">SCHOOL SECURITY <span class="brand-muted">3D MODEL</span></div>
         </div>
-
+        <div class="toolbar-center">
+          <div class="modes" role="group" aria-label="Workspace mode">
+            <button id="btn-edit-mode" class="active"><span class="mode-dot"></span>EDIT MODE</button>
+            <button id="btn-view-mode"><span class="mode-dot"></span>VIEW MODE</button>
+          </div>
+        </div>
       </div>
 
       <div class="main-content">
         <!-- Left Sidebar: Component Library -->
-        <div id="left-sidebar" class="sidebar">
-          <h3>COMPONENTS</h3>
-          <div class="library-categories">
-            <h4>Room Controls</h4>
-            <div style="padding: 10px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" id="chk-toggle-roof" checked style="width: 16px; height: 16px; cursor: pointer;">
-              <label for="chk-toggle-roof" style="cursor: pointer; user-select: none;">Show Roof & Ceiling</label>
-            </div>
-            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" id="chk-toggle-chairs" style="width: 16px; height: 16px; cursor: pointer;">
-              <label for="chk-toggle-chairs" style="cursor: pointer; user-select: none;">Show Chairs</label>
-            </div>
-            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" id="chk-toggle-blackboards" checked style="width: 16px; height: 16px; cursor: pointer;">
-              <label for="chk-toggle-blackboards" style="cursor: pointer; user-select: none;">Show Blackboards</label>
-            </div>
-            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" id="chk-toggle-doors" checked style="width: 16px; height: 16px; cursor: pointer;">
-              <label for="chk-toggle-doors" style="cursor: pointer; user-select: none;">Show Doors</label>
-            </div>
-            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" id="chk-toggle-windows" checked style="width: 16px; height: 16px; cursor: pointer;">
-              <label for="chk-toggle-windows" style="cursor: pointer; user-select: none;">Show Windows</label>
-            </div>
-            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" id="chk-toggle-rollup-shutters" style="width: 16px; height: 16px; cursor: pointer;">
-              <label for="chk-toggle-rollup-shutters" style="cursor: pointer; user-select: none;">Roll-Up Shutters Down</label>
-            </div>
-            <h4>Building Visibility</h4>
-            <div style="padding: 10px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" id="chk-building-left" checked style="width: 16px; height: 16px; cursor: pointer;">
-              <label for="chk-building-left" style="cursor: pointer; user-select: none;">Building Left</label>
-            </div>
-            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" id="chk-building-right" checked style="width: 16px; height: 16px; cursor: pointer;">
-              <label for="chk-building-right" style="cursor: pointer; user-select: none;">Building Right</label>
-            </div>
-            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" id="chk-building-back-left" checked style="width: 16px; height: 16px; cursor: pointer;">
-              <label for="chk-building-back-left" style="cursor: pointer; user-select: none;">Building Back Left</label>
-            </div>
-            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" id="chk-building-back-right" checked style="width: 16px; height: 16px; cursor: pointer;">
-              <label for="chk-building-back-right" style="cursor: pointer; user-select: none;">Building Back Right</label>
-            </div>
-            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" id="chk-covered-court" checked style="width: 16px; height: 16px; cursor: pointer;">
-              <label for="chk-covered-court" style="cursor: pointer; user-select: none;">Covered Court</label>
-            </div>
-            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" id="chk-campus-fence" checked style="width: 16px; height: 16px; cursor: pointer;">
-              <label for="chk-campus-fence" style="cursor: pointer; user-select: none;">Campus Fence</label>
-            </div>
-            <div style="padding: 10px; margin-top: 8px; background: #2c3e50; border-radius: 4px; color: white; display: flex; align-items: center; gap: 8px;">
-              <input type="checkbox" id="chk-security-checkpoints" checked style="width: 16px; height: 16px; cursor: pointer;">
-              <label for="chk-security-checkpoints" style="cursor: pointer; user-select: none;">Gate Security Checkpoints</label>
+        <div id="left-sidebar" class="sidebar sidebar-left">
+          <div class="sidebar-header">
+            <div>
+              <div class="sidebar-kicker">SCENE CONTROLS</div>
+              <h3>COMPONENTS</h3>
             </div>
           </div>
+
+          <div class="sidebar-toolbar">
+            <label class="search-field" for="control-search">
+              <span class="search-icon" aria-hidden="true">&#9906;</span>
+              <input id="control-search" type="search" placeholder="Search controls" autocomplete="off">
+            </label>
+            <button id="btn-clear-control-search" class="clear-search" type="button" title="Clear search" aria-label="Clear search">&times;</button>
+          </div>
+
+          <div id="control-no-results" class="control-no-results" hidden>No controls found</div>
+
+          <div class="library-categories">
+            <section class="control-section is-open" data-section="room">
+              <button class="section-toggle" type="button" aria-expanded="true">
+                <span class="section-title">Room Controls</span>
+              </button>
+              <div class="section-content">
+                <div class="control-card">
+                  <input type="checkbox" id="chk-toggle-roof" checked>
+                  <label for="chk-toggle-roof"><span>Show Roof &amp; Ceiling</span><small>Structure visibility</small></label>
+                </div>
+                <div class="control-card">
+                  <input type="checkbox" id="chk-toggle-chairs">
+                  <label for="chk-toggle-chairs"><span>Show Chairs</span><small>Interior furniture</small></label>
+                </div>
+                <div class="control-card">
+                  <input type="checkbox" id="chk-toggle-blackboards" checked>
+                  <label for="chk-toggle-blackboards"><span>Show Blackboards</span><small>Classroom details</small></label>
+                </div>
+                <div class="control-card">
+                  <input type="checkbox" id="chk-toggle-doors" checked>
+                  <label for="chk-toggle-doors"><span>Show Doors</span><small>Entry points</small></label>
+                </div>
+                <div class="control-card">
+                  <input type="checkbox" id="chk-toggle-windows" checked>
+                  <label for="chk-toggle-windows"><span>Show Windows</span><small>Openings and glazing</small></label>
+                </div>
+                <div class="control-card">
+                  <input type="checkbox" id="chk-toggle-cctv" checked>
+                  <label for="chk-toggle-cctv"><span>Show CCTV</span><small>Security cameras</small></label>
+                </div>
+                <div class="control-card">
+                  <input type="checkbox" id="chk-toggle-rollup-shutters">
+                  <label for="chk-toggle-rollup-shutters"><span>Roll-Up Shutters Down</span><small>Security closure</small></label>
+                </div>
+              </div>
+            </section>
+
+            <section class="control-section is-open" data-section="buildings">
+              <button class="section-toggle" type="button" aria-expanded="true">
+                <span class="section-title">Building Visibility</span>
+              </button>
+              <div class="section-content">
+                <div class="control-card">
+                  <input type="checkbox" id="chk-building-left" checked>
+                  <label for="chk-building-left"><span>Building Left</span><small>West classroom wing</small></label>
+                </div>
+                <div class="control-card">
+                  <input type="checkbox" id="chk-building-right" checked>
+                  <label for="chk-building-right"><span>Building Right</span><small>East classroom wing</small></label>
+                </div>
+                <div class="control-card">
+                  <input type="checkbox" id="chk-building-back-left" checked>
+                  <label for="chk-building-back-left"><span>Building Back Left</span><small>Rear classroom wing</small></label>
+                </div>
+                <div class="control-card">
+                  <input type="checkbox" id="chk-building-back-right" checked>
+                  <label for="chk-building-back-right"><span>Building Back Right</span><small>Rear classroom wing</small></label>
+                </div>
+                <div class="control-card">
+                  <input type="checkbox" id="chk-covered-court" checked>
+                  <label for="chk-covered-court"><span>Covered Court</span><small>Gym and stage</small></label>
+                </div>
+                <div class="control-card">
+                  <input type="checkbox" id="chk-campus-fence" checked>
+                  <label for="chk-campus-fence"><span>Campus Fence</span><small>Perimeter boundary</small></label>
+                </div>
+                <div class="control-card">
+                  <input type="checkbox" id="chk-security-checkpoints" checked>
+                  <label for="chk-security-checkpoints"><span>Gate Security Checkpoints</span><small>Entrance security</small></label>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div class="sidebar-footer"><span class="status-dot"></span><span>Changes apply instantly</span></div>
         </div>
 
         <!-- 3D Canvas Container -->
